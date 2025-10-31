@@ -6,8 +6,6 @@
 // @author       (Seu Nome Aqui)
 // @match        http://172.16.6.57/geogrid/aconcagua/*
 // @grant        none
-// @downloadURL
-// @updateURL
 // ==/UserScript==
 
 (function() {
