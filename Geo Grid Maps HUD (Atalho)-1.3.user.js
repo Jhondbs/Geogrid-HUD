@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Geo Grid Maps HUD (github)
 // @namespace    http://tampermonkey.net/
-// @version      1.3
+// @version      1.4
 // @description  Adiciona um HUD com informações de clientes e atalhos no Geo Grid, ativado pela tecla "+" do Numpad.
 // @author       (Seu Nome Aqui)
 // @match        http://172.16.6.57/geogrid/aconcagua/*
