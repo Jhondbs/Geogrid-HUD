@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Geo Grid Maps HUD (BETA)
 // @namespace    http://tampermonkey.net/
-// @version      1.6
+// @version      1.7
 // @description  Adiciona um HUD com informações de clientes e atalhos no Geo Grid, ativado pela tecla "+" do Numpad.
 // @author       (Seu Nome Aqui)
 // @match        http://172.16.6.57/geogrid/aconcagua/*
@@ -469,6 +469,7 @@
     let infoClientes = {};
     let isInitialLoadComplete = false;
     let ultimaAPI;
+    let ultimoCodigoPoste = null;
 
     // --- 4. LÓGICA DE CRIAÇÃO E REMOÇÃO DO HUD ---
 
@@ -886,6 +887,7 @@
         infoClientes = {};
         isInitialLoadComplete = false;
         state.searchQuery = ''; // Limpa a pesquisa
+        ultimoCodigoPoste = null;
     }
 
     /**
@@ -1065,6 +1067,7 @@
 
     /**
      * Inicia o interceptador de XHR (API).
+     * (ATUALIZADO com o handler 'carregaAcessoriosPoste.php')
      */
     function iniciarInterceptadorXHR() {
         // Handlers para cada API que queremos "ouvir"
@@ -1079,7 +1082,9 @@
                         conteudoDiv.innerHTML = '';
                         const searchBar = document.createElement('div');
                         searchBar.className = 'hud-search-bar';
+
                         searchBar.style.display = state.searchBarVisible ? 'block' : 'none';
+
                         searchBar.innerHTML = `<input type="text" id="hud-search-field" class="hud-search-input" placeholder="Pesquisar contrato (só números)...">`;
                         conteudoDiv.appendChild(searchBar);
 
@@ -1144,10 +1149,125 @@
                     debouncedFinalizar();
                 }
             },
-            "carregaViabilidadeMarcadorJava.php": data => {
+
+            "carregaViabilidadeMarcadorJava.php": (data, url, bodyParams) => {
+                // (Existente) Lógica da resposta
                 const loc = data?.dados?.[0];
                 if (loc) localizacao = [loc.lat, loc.lng];
+
+                // (Existente) Lógica do payload (request)
+                if (bodyParams && bodyParams.get) {
+                    const posteRaw = bodyParams.get("poste");
+                    if (posteRaw) {
+                        const posteLimpo = posteRaw.replace(/^PT/i, '');
+                        ultimoCodigoPoste = posteLimpo;
+                        console.log('HUD Script: Código do poste capturado:', ultimoCodigoPoste);
+                    }
+                }
+            },
+
+            "carregaTipoPadrao": (data) => {
+                const fabricante = data?.fabricante;
+                const tipo = data?.tipo;
+                let codigoParaInserir = null;
+                let seletorDoInput = null;
+
+                const codigoPoste = ultimoCodigoPoste || "00000";
+
+                // 1. Define o código E o seletor correto
+                if (fabricante === "Overtek" && tipo === "Caixa de Atendimento (Splitter)") {
+                    codigoParaInserir = `cx em. ${codigoPoste}`;
+                    seletorDoInput = '.template-caixa input[name="codigo"]';
+                } else if (fabricante === "Furukawa" && tipo === "terminal de teste") {
+                    codigoParaInserir = `cx at. ${codigoPoste}`;
+                    seletorDoInput = '.template-terminal input[name="codigo"]';
+                }
+
+                ultimoCodigoPoste = null; // Consome o código
+
+                if (!codigoParaInserir || !seletorDoInput) {
+                    return;
+                }
+
+                // 3. Se for, esperamos o painel aparecer no DOM
+                const observer = new MutationObserver((mutationsList, obs) => {
+                    for (const mutation of mutationsList) {
+                        if (mutation.type === 'childList') {
+                            for (const node of mutation.addedNodes) {
+                                // 4. Verifica se o nó adicionado é o painel de cadastro
+                                if (node.nodeType === 1 && node.matches('.padrao-painel-flutuante.painel-acessorio-cadastro')) {
+
+                                    // 5. Painel encontrado! Usamos o seletor dinâmico
+                                    const inputCodigo = node.querySelector(seletorDoInput);
+
+                                    if (inputCodigo) {
+                                        // 6. Preenche o valor e foca no campo
+                                        inputCodigo.value = codigoParaInserir;
+                                        inputCodigo.focus();
+
+                                        // 7. Para de observar (trabalho concluído)
+                                        obs.disconnect();
+                                        return;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+
+                // 8. Começa a observar o 'body' à procura de novos elementos
+                observer.observe(document.body, { childList: true, subtree: true });
+
+                // 9. Medida de segurança: para o observer após 5 segundos
+                setTimeout(() => {
+                    observer.disconnect();
+                }, 5000);
+            },
+
+            // --- (NOVO) HANDLER DE CADASTRO DE CABO ---
+            "carregaAcessoriosPoste.php": (data) => {
+                // 1. Pega o código do poste
+                const codigoPoste = ultimoCodigoPoste || "00000";
+                const codigoParaInserir = `ponte ${codigoPoste}`;
+
+                // 2. Consome o código
+                ultimoCodigoPoste = null;
+
+                // 3. Espera o painel aparecer
+                const observer = new MutationObserver((mutationsList, obs) => {
+                    for (const mutation of mutationsList) {
+                        if (mutation.type === 'childList') {
+                            for (const node of mutation.addedNodes) {
+                                // 4. Verifica se é o painel correto
+                                if (node.nodeType === 1 && node.matches('.padrao-painel-flutuante.painel-cadastro-cabo-ligacao')) {
+
+                                    // 5. Encontra o input de código DENTRO dele
+                                    const inputCodigo = node.querySelector('input[name="codigo"]');
+
+                                    if (inputCodigo) {
+                                        // 6. Preenche e foca
+                                        inputCodigo.value = codigoParaInserir;
+                                        inputCodigo.focus();
+
+                                        // 7. Limpa
+                                        obs.disconnect();
+                                        return;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+
+                // 8. Começa a observar
+                observer.observe(document.body, { childList: true, subtree: true });
+
+                // 9. Medida de segurança
+                setTimeout(() => {
+                    observer.disconnect();
+                }, 5000);
             }
+            // --- FIM DO NOVO HANDLER ---
         };
 
         function dispatchHandler(url, resp, bodyParams) {
@@ -1166,7 +1286,14 @@
         XMLHttpRequest.prototype.open = function(method, url) {
             this._url = url;
             this.addEventListener("load", () => {
-                let bodyParams = (typeof this._body === "string") ? new URLSearchParams(this._body) : null;
+                let bodyParams;
+                if (this._body instanceof FormData) {
+                    bodyParams = this._body;
+                } else if (typeof this._body === "string") {
+                    bodyParams = new URLSearchParams(this._body);
+                } else {
+                    bodyParams = null;
+                }
                 dispatchHandler(this._url, this.responseText, bodyParams);
             });
             return origOpen.apply(this, arguments);
