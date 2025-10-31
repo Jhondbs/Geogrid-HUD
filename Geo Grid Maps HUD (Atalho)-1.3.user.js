@@ -472,8 +472,8 @@
         document.head.appendChild(styleSheet);
 
         // --- LIMPEZA DA PÁGINA ORIGINAL ---
-        document.querySelectorAll("div.componente-topo > div.conteudo > div.bloco1, .componente-rodape").forEach(div => div.remove());
-        document.querySelectorAll(".menu-lateral-container, .menu-lateral-direito.menu-lateral-rota.absolute").forEach(el => { el.style.overflow = "auto"; });
+        //document.querySelectorAll("div.componente-topo > div.conteudo > div.bloco1, .componente-rodape").forEach(div => div.remove());
+        //document.querySelectorAll(".menu-lateral-container, .menu-lateral-direito.menu-lateral-rota.absolute").forEach(el => { el.style.overflow = "auto"; });
 
         // --- PAINEL PRINCIPAL (HUD) ---
         const painel = document.createElement("div");
