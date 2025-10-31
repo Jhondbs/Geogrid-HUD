@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         Geo Grid Maps HUD (github)
+// @name         Geo Grid Maps HUD (BETA)
 // @namespace    http://tampermonkey.net/
-// @version      1.4
+// @version      1.5
 // @description  Adiciona um HUD com informações de clientes e atalhos no Geo Grid, ativado pela tecla "+" do Numpad.
 // @author       (Seu Nome Aqui)
 // @match        http://172.16.6.57/geogrid/aconcagua/*
@@ -27,7 +27,8 @@
     // LÓGICA DE CONFIGURAÇÕES (LocalStorage)
     const STORAGE_KEY = "geoGridHudSettings";
     const DEFAULT_SETTINGS = {
-       exibirNomeCliente: false,
+        removerIndesejado: true,
+        exibirNomeCliente: false,
         searchBarVisible: true,
         somenteCancelados: true,
         copiarNomeRede: false,
@@ -232,6 +233,20 @@
             font-size: 0.95em;
             opacity: 0.8; /* Um pouco mais suave que o contrato */
         }
+        /* --- ESTILOS PAINEL CONFIGURAÇÕES --- */
+        .hud-settings-header {
+            color: var(--hud-accent); /* Cor de destaque (azul) */
+            font-weight: 600;
+            font-size: 14px;
+            padding-bottom: 4px;
+            margin-top: 10px; /* Espaço acima do título */
+            margin-bottom: 4px; /* Espaço abaixo do título */
+            border-bottom: 1px solid var(--hud-border);
+        }
+        /* Garante que o primeiro header não tenha margem em cima */
+        .hud-settings-header:first-of-type {
+            margin-top: 0;
+        }
     `;
 
     // --- 2. FUNÇÕES AUXILIARES (HELPERS) ---
@@ -421,6 +436,17 @@
     // Cria uma versão "debounced" da função de pesquisa (ADICIONADO)
     const debouncedSearch = debounce(performSearch, 300); // 300ms de espera
 
+    // Função de REMOVER AS DIVS INDESEJADAS
+    function atualizarElementosIndesejados() {
+        const seletores = "div.componente-topo > div.conteudo > div.bloco1, .componente-rodape";
+        const elementos = document.querySelectorAll(seletores);
+        // 'none' se for para remover, '' (vazio) para restaurar ao padrão
+        const displayValor = state.removerIndesejado ? 'none' : '';
+        elementos.forEach(el => {
+            el.style.display = displayValor;
+        });
+    }
+
     // --- 3. ESTADO GLOBAL E DADOS COLETADOS ---
 
     // ESTADO GLOBAL (MODIFICADO)
@@ -472,8 +498,8 @@
         document.head.appendChild(styleSheet);
 
         // --- LIMPEZA DA PÁGINA ORIGINAL ---
-        //document.querySelectorAll("div.componente-topo > div.conteudo > div.bloco1, .componente-rodape").forEach(div => div.remove());
-        //document.querySelectorAll(".menu-lateral-container, .menu-lateral-direito.menu-lateral-rota.absolute").forEach(el => { el.style.overflow = "auto"; });
+        atualizarElementosIndesejados();
+        document.querySelectorAll(".menu-lateral-container, .menu-lateral-direito.menu-lateral-rota.absolute").forEach(el => { el.style.overflow = "auto"; });
 
         // --- PAINEL PRINCIPAL (HUD) ---
         const painel = document.createElement("div");
@@ -679,20 +705,108 @@
             const content = document.createElement("div");
             content.className = "hud-content";
 
-            content.appendChild(createCheckbox('exibirNomeCliente', 'Exibir nome do cliente', state.exibirNomeCliente, val => state.exibirNomeCliente = val));
+            // (NOVO) Helper para criar os títulos dos grupos
+            const createSettingsHeader = (title) => {
+                const header = document.createElement("div");
+                header.className = "hud-settings-header";
+                header.textContent = title;
+                return header;
+            };
 
-            // Os checkboxes agora usam o 'state' carregado do localStorage
-            content.appendChild(createCheckbox('somenteCancelados', 'Copiar só cancelados', state.somenteCancelados, val => state.somenteCancelados = val));
-            content.appendChild(createCheckbox('copiarStatus', 'Copiar status do cliente', state.copiarStatus, val => state.copiarStatus = val));
-            content.appendChild(createCheckbox('copiarNomeRede', 'Copiar nome da rede', state.copiarNomeRede, val => state.copiarNomeRede = val));
-            content.appendChild(createCheckbox('abrirNovaGuia', 'Mapa abre em nova guia', state.abrirNovaGuia, val => state.abrirNovaGuia = val));
-            content.appendChild(createCheckbox('destacarRedesDivergentes', 'Destacar redes divergentes', state.destacarRedesDivergentes, val => state.destacarRedesDivergentes = val));
+            // --- Grupo 1: Interface e Exibição ---
+            content.appendChild(createSettingsHeader("Interface e Exibição"));
 
+            // Checkbox para a Barra de Pesquisa (sincronizado com o botão)
+            content.appendChild(createCheckbox(
+                'searchBarVisible',
+                'Exibir barra de pesquisa',
+                state.searchBarVisible,
+                val => {
+                    state.searchBarVisible = val;
+                    // Atualiza a barra de pesquisa na UI principal
+                    const searchBar = document.querySelector(".hud-search-bar");
+                    if (searchBar) {
+                        searchBar.style.display = val ? 'block' : 'none';
+                    }
+                    // Atualiza o botão na UI principal
+                    const btnPesquisa = document.getElementById('pesquisaBtn');
+                    if (btnPesquisa) {
+                        btnPesquisa.classList.toggle('active', val);
+                    }
+                    // saveSettings() já é chamado automaticamente por createCheckbox
+                }
+            ));
+
+            content.appendChild(createCheckbox(
+                'removerIndesejado',
+                'Ocultar topo e rodapé do site', // Novo nome
+                state.removerIndesejado,
+                val => {
+                    state.removerIndesejado = val;
+                    atualizarElementosIndesejados();
+                }
+            ));
+
+            content.appendChild(createCheckbox(
+                'exibirNomeCliente',
+                'Exibir nome do cliente no HUD', // Novo nome
+                state.exibirNomeCliente,
+                val => {
+                    state.exibirNomeCliente = val;
+                    finalizarHud(); // Redesenha o HUD para aplicar
+                }
+            ));
+
+            content.appendChild(createCheckbox(
+                'destacarRedesDivergentes',
+                'Destacar redes divergentes', // Nome OK
+                state.destacarRedesDivergentes,
+                val => {
+                    state.destacarRedesDivergentes = val;
+                    finalizarHud(); // Redesenha o HUD para aplicar
+                }
+            ));
+
+            // --- Grupo 2: Copiar Informações ---
+            content.appendChild(createSettingsHeader("Copiar Informações"));
+
+            content.appendChild(createCheckbox(
+                'somenteCancelados',
+                'Copiar apenas clientes cancelados', // Novo nome
+                state.somenteCancelados,
+                val => state.somenteCancelados = val
+            ));
+
+            content.appendChild(createCheckbox(
+                'copiarStatus',
+                'Incluir status do cliente', // Novo nome
+                state.copiarStatus,
+                val => state.copiarStatus = val
+            ));
+
+            content.appendChild(createCheckbox(
+                'copiarNomeRede',
+                'Incluir nome da rede', // Novo nome
+                state.copiarNomeRede,
+                val => state.copiarNomeRede = val
+            ));
+
+            // --- Grupo 3: Comportamento ---
+            content.appendChild(createSettingsHeader("Comportamento"));
+
+            content.appendChild(createCheckbox(
+                'abrirNovaGuia',
+                'Abrir mapa em nova guia', // Novo nome
+                state.abrirNovaGuia,
+                val => state.abrirNovaGuia = val
+            ));
+
+            // --- Cria o painel ---
             createDraggablePanel('blocoPredefinicoesHUD', 'Predefinições', content, {
                 top: mainPanelRect.top,
                 left: mainPanelRect.left - 320,
                 width: 300,
-                height: mainPanelRect.height
+                height: 420
             });
         });
 
