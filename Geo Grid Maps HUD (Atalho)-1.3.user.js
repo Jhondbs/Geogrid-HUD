@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Geo Grid Maps HUD (BETA)
 // @namespace    http://tampermonkey.net/
-// @version      1.5
+// @version      1.6
 // @description  Adiciona um HUD com informações de clientes e atalhos no Geo Grid, ativado pela tecla "+" do Numpad.
 // @author       (Seu Nome Aqui)
 // @match        http://172.16.6.57/geogrid/aconcagua/*
@@ -1177,44 +1177,59 @@
             return origSend.call(this, body);
         };
     }
+    //Colar Coordenadas
+    function iniciarListenerDeColarCoordenadas() {
+        // Trava para garantir que o listener seja adicionado apenas uma vez
+        window.__coordenadasListener__ = window.__coordenadasListener__ ?? true;
 
-    /**
-     * Inicia o listener para o preenchimento de coordenadas.
-     */
-    function iniciarListenerCoordenadas() {
-        // A flag __coordenadas__ previne que o listener seja adicionado múltiplas vezes
-        window.__coordenadas__ = window.__coordenadas__ ?? true;
-        if (window.__coordenadas__) {
-            document.body.addEventListener('click', function(event) {
-                if (event.target.closest('button[name="coordenada"]')) {
-                    const coord = prompt("Cole a coordenada aqui");
-                    if (!coord) return;
+        if (window.__coordenadasListener__) {
+            document.body.addEventListener('paste', function(e) {
+                // Ouve por "colar" em qualquer input[name="latitude"]
+                if (e.target.matches('input[name="latitude"]')) {
 
-                    let valor = coord.trim().replace(',', ' ');
-                    let partes = valor.split(/\s+/);
+                    // 1. Obtém o texto da área de transferência
+                    const pastedText = (e.clipboardData || window.clipboardData).getData('text');
+                    if (!pastedText) return;
 
+                    // 2. Lógica de parsing (a mesma que tinhas no prompt)
+                    let valor = pastedText.trim().replace(',', ' '); // Normaliza "lat,lon" para "lat lon"
+                    let partes = valor.split(/\s+/);            // Divide por um ou mais espaços
+
+                    // 3. Se encontramos 2+ partes (lat e lon)...
                     if (partes.length >= 2) {
-                        const lat = partes[0];
-                        const lon = partes[1];
 
-                        setTimeout(() => {
-                            const latInputs = document.querySelectorAll('input[name="latitude"]');
-                            latInputs.forEach(ipt => ipt.value = lat);
+                        // ... impedimos o "colar" padrão
+                        e.preventDefault();
 
-                            const lonInputs = document.querySelectorAll('input[name="longitude"]');
-                            lonInputs.forEach(ipt => ipt.value = lon);
-                        }, 250);
+                        const latRaw = partes[0]; // (ALTERADO) Pega o valor "cru"
+                        const lonRaw = partes[1]; // (ALTERADO) Pega o valor "cru"
+
+                        // --- (NOVO) LÓGICA PARA GARANTIR O HÍFEN ---
+                        // Se a coordenada não começar com '-', adiciona um.
+                        const lat = latRaw.startsWith('-') ? latRaw : '-' + latRaw;
+                        const lon = lonRaw.startsWith('-') ? lonRaw : '-' + lonRaw;
+                        // --- FIM DA NOVA LÓGICA ---
+
+                        // 4. Preenchemos TODOS os campos de latitude da página
+                        const latInputs = document.querySelectorAll('input[name="latitude"]');
+                        latInputs.forEach(ipt => ipt.value = lat);
+
+                        // 5. Preenchemos TODOS os campos de longitude da página
+                        const lonInputs = document.querySelectorAll('input[name="longitude"]');
+                        lonInputs.forEach(ipt => ipt.value = lon);
                     }
+                    // Se não for um par de coordenadas, o "colar" normal acontece.
                 }
-            }, true); // Usando 'true' para capturar o evento mais cedo
-            window.__coordenadas__ = false; // Trava o listener
-        };
+            }, true); // 'true' usa a fase de captura
+
+            window.__coordenadasListener__ = false; // Ativa a trava
+        }
     }
 
     // --- 6. INICIALIZAÇÃO DO SCRIPT ---
     // Inicia os componentes persistentes
 
-    iniciarListenerCoordenadas();
+    iniciarListenerDeColarCoordenadas();
     iniciarInterceptadorXHR();
 
     // --- 7. ATIVADOR POR TECLA ---
