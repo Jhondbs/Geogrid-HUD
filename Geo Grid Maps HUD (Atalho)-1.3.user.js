@@ -6,6 +6,8 @@
 // @author       (Seu Nome Aqui)
 // @match        http://172.16.6.57/geogrid/aconcagua/*
 // @grant        none
+// @downloadURL https://github.com/Jhondbs/Geogrid-HUD/raw/refs/heads/main/Geo%20Grid%20Maps%20HUD%20(Atalho)-1.3.user.js
+// @updateURL https://github.com/Jhondbs/Geogrid-HUD/raw/refs/heads/main/Geo%20Grid%20Maps%20HUD%20(Atalho)-1.3.user.js
 // ==/UserScript==
 
 (function() {
