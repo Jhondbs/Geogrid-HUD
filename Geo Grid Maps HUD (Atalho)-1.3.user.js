@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         Geo Grid Maps HUD (BETA)
+// @name         Geogrid com AutoComplete
 // @namespace    http://tampermonkey.net/
-// @version      1.7
+// @version      1.8
 // @description  Adiciona um HUD com informações de clientes e atalhos no Geo Grid, ativado pela tecla "+" do Numpad.
 // @author       (Seu Nome Aqui)
 // @match        http://172.16.6.57/geogrid/aconcagua/*
@@ -887,7 +887,7 @@
         infoClientes = {};
         isInitialLoadComplete = false;
         state.searchQuery = ''; // Limpa a pesquisa
-        ultimoCodigoPoste = null;
+        //ultimoCodigoPoste = null;
     }
 
     /**
@@ -1065,9 +1065,10 @@
     // Criar uma versão "debounced" da função de finalização
     const debouncedFinalizar = debounce(finalizarHud, 400);
 
+
     /**
      * Inicia o interceptador de XHR (API).
-     * (ATUALIZADO com o handler 'carregaAcessoriosPoste.php')
+     * (ESTRATÉGIA HÍBRIDA - Gatilho direto para Splitter, Vigia de 3s para os outros)
      */
     function iniciarInterceptadorXHR() {
         // Handlers para cada API que queremos "ouvir"
@@ -1161,7 +1162,7 @@
                     if (posteRaw) {
                         const posteLimpo = posteRaw.replace(/^PT/i, '');
                         ultimoCodigoPoste = posteLimpo;
-                        console.log('HUD Script: Código do poste capturado:', ultimoCodigoPoste);
+                        //console.log('HUD Script: Código do poste capturado:', ultimoCodigoPoste);
                     }
                 }
             },
@@ -1183,13 +1184,11 @@
                     seletorDoInput = '.template-terminal input[name="codigo"]';
                 }
 
-                ultimoCodigoPoste = null; // Consome o código
-
                 if (!codigoParaInserir || !seletorDoInput) {
                     return;
                 }
 
-                // 3. Se for, esperamos o painel aparecer no DOM
+                // 3. (REVERTIDO) Usa o "Vigia" simples com timeout de 3s
                 const observer = new MutationObserver((mutationsList, obs) => {
                     for (const mutation of mutationsList) {
                         if (mutation.type === 'childList') {
@@ -1214,26 +1213,19 @@
                         }
                     }
                 });
-
-                // 8. Começa a observar o 'body' à procura de novos elementos
                 observer.observe(document.body, { childList: true, subtree: true });
-
-                // 9. Medida de segurança: para o observer após 5 segundos
+                // 9. (MODIFICADO) Medida de segurança: 3 segundos
                 setTimeout(() => {
                     observer.disconnect();
-                }, 5000);
+                }, 3000); // 3 segundos
             },
 
-            // --- (NOVO) HANDLER DE CADASTRO DE CABO ---
             "carregaAcessoriosPoste.php": (data) => {
                 // 1. Pega o código do poste
                 const codigoPoste = ultimoCodigoPoste || "00000";
                 const codigoParaInserir = `ponte ${codigoPoste}`;
 
-                // 2. Consome o código
-                ultimoCodigoPoste = null;
-
-                // 3. Espera o painel aparecer
+                // 3. (REVERTIDO) Usa o "Vigia" simples com timeout de 3s
                 const observer = new MutationObserver((mutationsList, obs) => {
                     for (const mutation of mutationsList) {
                         if (mutation.type === 'childList') {
@@ -1258,16 +1250,19 @@
                         }
                     }
                 });
-
-                // 8. Começa a observar
                 observer.observe(document.body, { childList: true, subtree: true });
-
-                // 9. Medida de segurança
                 setTimeout(() => {
                     observer.disconnect();
-                }, 5000);
+                }, 3000); // 3 segundos
+            },
+
+            "carrega_tiposDeEquipamentos.php": (data) => {
+                const codigoPoste = ultimoCodigoPoste || "00000";
+                const codigoParaInserir = `spl. TIPO ${codigoPoste}`;
+                setTimeout(() => {
+                    document.activeElement.value=codigoParaInserir
+                }, 100); // 100ms de espera
             }
-            // --- FIM DO NOVO HANDLER ---
         };
 
         function dispatchHandler(url, resp, bodyParams) {
