@@ -1,9 +1,9 @@
 // ==UserScript==
-// @name         Geogrid com AutoComplete
+// @name         Geogrid Tools
 // @namespace    http://tampermonkey.net/
-// @version      1.9.1
+// @version      1.10
 // @description  Adiciona um HUD com informações de clientes e atalhos no Geo Grid, ativado pela tecla "+" do Numpad.
-// @author       (Seu Nome Aqui)
+// @author       Jhon
 // @match        http://172.16.6.57/geogrid/aconcagua/*
 // @grant        none
 // @downloadURL https://github.com/Jhondbs/Geogrid-HUD/raw/refs/heads/main/Geo%20Grid%20Maps%20HUD%20(Atalho)-1.3.user.js
@@ -22,11 +22,13 @@
         copy: `<svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>`,
         settings: `<svg viewBox="0 0 24 24"><path d="M19.43 12.98c.04-.32.07-.64.07-.98s-.03-.66-.07-.98l2.11-1.65c.19-.15.24-.42.12-.64l-2-3.46c-.12-.22-.39-.3-.61-.22l-2.49 1c-.52-.4-1.08-.73-1.69-.98l-.38-2.65C14.46 2.18 14.25 2 14 2h-4c-.25 0-.46.18-.49-.42l-.38 2.65c-.61-.25-1.17-.59-1.69-.98l-2.49-1c-.23-.09-.49 0-.61.22l-2 3.46c-.13.22-.07.49.12.64l2.11 1.65c-.04.32-.07.65-.07.98s.03.66.07.98l-2.11 1.65c-.19.15-.24-.42-.12-.64l2 3.46c.12.22.39.3.61.22l2.49-1c.52.4 1.08.73 1.69-.98l.38 2.65c.03.24.24.42.49.42h4c.25 0 .46-.18.49-.42l.38-2.65c.61-.25 1.17-.59-1.69-.98l2.49 1c.23.09.49 0 .61-.22l2-3.46c.12-.22.07-.49-.12-.64l-2.11-1.65zM12 15.5c-1.93 0-3.5-1.57-3.5-3.5s1.57-3.5 3.5-3.5 3.5 1.57 3.5 3.5-1.57 3.5-3.5 3.5z"/></svg>`,
         map: `<svg viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>`,
+        crosshair: `<svg viewBox="0 0 24 24"><path d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm0 6c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z"/><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2"/></svg>`
     };
 
     // LÓGICA DE CONFIGURAÇÕES (LocalStorage)
     const STORAGE_KEY = "geoGridHudSettings";
     const DEFAULT_SETTINGS = {
+        copiarCoordenadas: false,
         removerIndesejado: true,
         exibirNomeCliente: false,
         searchBarVisible: true,
@@ -448,6 +450,84 @@
         });
     }
 
+    function handleMapLink(lat, lon, successElement) {
+        if (!lat || !lon) {
+            console.warn("HUD Script: handleMapLink chamado sem coordenadas.");
+            if (successElement) { // Pisca a vermelho se falhar
+                successElement.style.borderColor = 'var(--hud-red)';
+                setTimeout(() => successElement.style.borderColor = 'var(--hud-border)', 1000);
+            }
+            return;
+        }
+
+        // Verifica o estado que o utilizador definiu
+        if (state.copiarCoordenadas) {
+            // Copia apenas as coordenadas
+            copyToClipboard(`${lat}, ${lon}`, successElement);
+        } else {
+            // Cria o link
+            const link = `https://www.google.com/maps?q=${lat},${lon}`;
+            if (state.abrirNovaGuia) {
+                window.open(link, "_blank");
+            } else {
+                copyToClipboard(link, successElement);
+            }
+        }
+    }
+
+    /**
+     * (NOVO) Função chamada quando o mapa é clicado no modo de captura.
+     */
+    function handleMapCaptureClick(event) {
+        const lat = event.latLng.lat();
+        const lng = event.latLng.lng();
+
+        // Encontra o botão de captura para o feedback de 'sucesso'
+        const btnCaptura = document.getElementById('capturaMapaBtn');
+
+        // 1. Usa a nossa nova função central
+        handleMapLink(lat, lng, btnCaptura);
+
+        // 2. (NOVO) Desativa o modo de captura automaticamente
+        //    Como o modo está ATIVO, chamá-lo irá desativá-lo.
+        toggleMapCaptureMode();
+    }
+
+    /**
+     * (NOVO) Ativa/Desativa o modo de captura de coordenadas
+     */
+    function toggleMapCaptureMode() {
+        if (!window.__googleMapsApiDisponivel__ || !window.__googleMapInstancia__) {
+            console.error("HUD Script: Captura falhou. API do Google ou Instância do Mapa não encontradas.");
+            return;
+        }
+
+        const map = window.__googleMapInstancia__;
+        const btnCaptura = document.getElementById('capturaMapaBtn');
+
+        // Inverte o estado (usamos uma flag global, pois o script é @grant none)
+        window.__mapCaptureActive__ = !window.__mapCaptureActive__;
+
+        if (window.__mapCaptureActive__) {
+            // ATIVAR
+            console.log('%c[HUD Script] MODO DE CAPTURA ATIVADO.', 'color: #98c379; font-weight: bold;');
+            // Guardamos o listener para o remover depois
+            window.__mapClickListener__ = map.addListener('click', handleMapCaptureClick);
+            map.setOptions({ draggableCursor: 'crosshair' });
+            if (btnCaptura) btnCaptura.classList.add('active'); // Botão fica azul
+
+        } else {
+            // DESATIVAR
+            console.log('%c[HUD Script] MODO DE CAPTURA DESATIVADO.', 'color: #e06c75; font-weight: bold;');
+            if (window.__mapClickListener__) {
+                // Remove o listener
+                google.maps.event.removeListener(window.__mapClickListener__);
+                window.__mapClickListener__ = null;
+            }
+            map.setOptions({ draggableCursor: null }); // Restaura o cursor
+            if (btnCaptura) btnCaptura.classList.remove('active');
+        }
+    }
     // --- 3. ESTADO GLOBAL E DADOS COLETADOS ---
 
     // ESTADO GLOBAL (MODIFICADO)
@@ -536,11 +616,14 @@
             return btn;
         }
 
+        // ORDEM DOS BOTÕES ATUALIZADA
         const btnPesquisa = createButton('pesquisaBtn', ICONS.search, 'Ocultar/Exibir Pesquisa');
         const expandirBtn = createButton('expandirBtn', ICONS.notes, 'Anotações');
         const btnCopiar = createButton('copiarContratosBtn', ICONS.copy, 'Copiar Contratos');
         const btnConfig = createButton('configBtn', ICONS.settings, 'Configurações');
-        const btnMapa = createButton('abrirMapaBtn', ICONS.map, 'Localização');
+        const btnMapa = createButton('abrirMapaBtn', ICONS.map, 'Localização do Poste');
+
+        const btnCaptura = createButton('capturaMapaBtn', ICONS.crosshair, 'Capturar Coordenadas do Mapa (Ativa/Desativa)');
 
         const btnFechar = document.createElement("button");
         btnFechar.className = 'hud-btn-close';
@@ -601,7 +684,7 @@
         function doResize(e) {
             const deltaX = e.clientX - startX;
             const deltaY = e.clientY - startY;
-            const minWidth = 280;
+            const minWidth = 409;
             const minHeight = 150;
 
             if (resizeDirection.includes('right')) {
@@ -648,7 +731,7 @@
 
         // --- EVENTOS DOS BOTÕES ---
 
-        // Botão Pesquisa Toggle
+        // (Existente) Botão Pesquisa Toggle
         btnPesquisa.addEventListener("click", () => {
             // 1. Inverte o estado
             state.searchBarVisible = !state.searchBarVisible;
@@ -665,10 +748,10 @@
         // Define o estado inicial do botão de pesquisa
         btnPesquisa.classList.toggle('active', state.searchBarVisible);
 
-        // Botão Fechar (agora chama a função dedicada)
+        // (Existente) Botão Fechar
         btnFechar.addEventListener("click", removerHUD);
 
-        // Botão Notas
+        // (Existente) Botão Notas
         expandirBtn.addEventListener("click", () => {
             if (state.notasAtivo) {
                 document.querySelector("#blocoNotasHUD")?.remove();
@@ -695,7 +778,7 @@
             });
         });
 
-        // Botão Configurações
+        // (Existente) Botão Configurações (COM REORGANIZAÇÃO)
         btnConfig.addEventListener("click", () => {
             if (state.configAtivo) {
                 document.querySelector("#blocoPredefinicoesHUD")?.remove();
@@ -718,30 +801,26 @@
             // --- Grupo 1: Interface e Exibição ---
             content.appendChild(createSettingsHeader("Interface e Exibição"));
 
-            // Checkbox para a Barra de Pesquisa (sincronizado com o botão)
             content.appendChild(createCheckbox(
                 'searchBarVisible',
                 'Exibir barra de pesquisa',
                 state.searchBarVisible,
                 val => {
                     state.searchBarVisible = val;
-                    // Atualiza a barra de pesquisa na UI principal
                     const searchBar = document.querySelector(".hud-search-bar");
                     if (searchBar) {
                         searchBar.style.display = val ? 'block' : 'none';
                     }
-                    // Atualiza o botão na UI principal
                     const btnPesquisa = document.getElementById('pesquisaBtn');
                     if (btnPesquisa) {
                         btnPesquisa.classList.toggle('active', val);
                     }
-                    // saveSettings() já é chamado automaticamente por createCheckbox
                 }
             ));
 
             content.appendChild(createCheckbox(
                 'removerIndesejado',
-                'Ocultar topo e rodapé do site', // Novo nome
+                'Ocultar topo e rodapé do site',
                 state.removerIndesejado,
                 val => {
                     state.removerIndesejado = val;
@@ -751,54 +830,64 @@
 
             content.appendChild(createCheckbox(
                 'exibirNomeCliente',
-                'Exibir nome do cliente no HUD', // Novo nome
+                'Exibir nome do cliente no HUD',
                 state.exibirNomeCliente,
                 val => {
                     state.exibirNomeCliente = val;
-                    finalizarHud(); // Redesenha o HUD para aplicar
+                    finalizarHud(); // Redesenha o HUD
                 }
             ));
 
             content.appendChild(createCheckbox(
                 'destacarRedesDivergentes',
-                'Destacar redes divergentes', // Nome OK
+                'Destacar redes divergentes',
                 state.destacarRedesDivergentes,
                 val => {
                     state.destacarRedesDivergentes = val;
-                    finalizarHud(); // Redesenha o HUD para aplicar
+                    finalizarHud(); // Redesenha o HUD
                 }
             ));
 
             // --- Grupo 2: Copiar Informações ---
             content.appendChild(createSettingsHeader("Copiar Informações"));
 
+            // (MOVEMOS o 'copiarCoordenadas' daqui)
+
             content.appendChild(createCheckbox(
                 'somenteCancelados',
-                'Copiar apenas clientes cancelados', // Novo nome
+                'Copiar apenas clientes cancelados',
                 state.somenteCancelados,
                 val => state.somenteCancelados = val
             ));
 
             content.appendChild(createCheckbox(
                 'copiarStatus',
-                'Incluir status do cliente', // Novo nome
+                'Incluir status do cliente',
                 state.copiarStatus,
                 val => state.copiarStatus = val
             ));
 
             content.appendChild(createCheckbox(
                 'copiarNomeRede',
-                'Incluir nome da rede', // Novo nome
+                'Incluir nome da rede',
                 state.copiarNomeRede,
                 val => state.copiarNomeRede = val
             ));
 
-            // --- Grupo 3: Comportamento ---
-            content.appendChild(createSettingsHeader("Comportamento"));
+            // --- Grupo 3: Localização (RENOMEADO) ---
+            content.appendChild(createSettingsHeader("Localização")); // (RENOMEADO)
+
+            // (MOVEMOS para cá) Checkbox de Coordenadas
+            content.appendChild(createCheckbox(
+                'copiarCoordenadas',
+                'Copiar coordenadas (em vez de link)',
+                state.copiarCoordenadas,
+                val => state.copiarCoordenadas = val
+            ));
 
             content.appendChild(createCheckbox(
                 'abrirNovaGuia',
-                'Abrir mapa em nova guia', // Novo nome
+                'Abrir mapa em nova guia',
                 state.abrirNovaGuia,
                 val => state.abrirNovaGuia = val
             ));
@@ -808,57 +897,46 @@
                 top: mainPanelRect.top,
                 left: mainPanelRect.left - 320,
                 width: 300,
-                height: 420
+                height: 460 // (Altura mantida)
             });
         });
 
-        // Botão Mapa (usa a 'localizacao' global)
+        // (MODIFICADO) Botão Mapa (agora usa a função central)
         btnMapa.addEventListener("click", () => {
-            if (!localizacao || localizacao.length < 2) {
-                btnMapa.style.borderColor = 'var(--hud-red)';
-                setTimeout(() => btnMapa.style.borderColor = 'var(--hud-border)', 1000);
-                return;
-            }
-            const link = `https://www.google.com/maps?q=${localizacao[0]},${localizacao[1]}`;
-            if (state.abrirNovaGuia) {
-                window.open(link, "_blank");
-                return;
-            }
-            copyToClipboard(link, btnMapa);
+            // A variável 'localizacao' (com 'l' minúsculo) é preenchida pelo teu interceptador XHR
+            handleMapLink(localizacao[0], localizacao[1], btnMapa);
         });
 
-        // Botão Copiar (usa 'infoClientes' e 'state' globais)
+        // (NOVO) Botão Captura
+        btnCaptura.addEventListener("click", toggleMapCaptureMode);
+
+        // (Existente) Botão Copiar
         btnCopiar.addEventListener("click", () => {
             const clientesParaCopiar = Object.values(infoClientes)
                 .filter(c => !state.somenteCancelados || c.data.registro.tipodesativacao === 1)
                 .map(c => {
-                    // --- LÓGICA DE PARSING (AGORA ESPELHA A 'finalizarHud') ---
                     let textoCompleto = c.data.registro.nome || "Cliente Desconhecido";
                     let partes = textoCompleto.split(" - ");
                     let contrato = partes[1]?.trim() || "Cliente Desconhecido";
 
-                    let textoParaCopiar = contrato; // Começa com o contrato
+                    let textoParaCopiar = contrato;
 
-                    // --- LÓGICA PARA ADICIONAR O NOME ---
-                    if (state.exibirNomeCliente) { // A CONDIÇÃO QUE PEDISTE
+                    if (state.exibirNomeCliente) {
                         let nomeCliente = "";
                         if (partes.length > 2) {
                             let ultimasPartes = partes.slice(2).join(" - ");
                             nomeCliente = ultimasPartes.replace(/\s*\((ATIVO|CANCELADO|SUSPENSO|NAO IDENTIFICADO)\)$/i, "").trim();
                         }
                         if (nomeCliente) {
-                            textoParaCopiar += ` - ${nomeCliente}`; // Adiciona o nome
+                            textoParaCopiar += ` - ${nomeCliente}`;
                         }
                     }
-                    // --- FIM DA LÓGICA DO NOME ---
 
-                    // Lógica para adicionar o status
                     if (state.copiarStatus && contrato !== "Cliente Desconhecido") {
                         let statusCliente = textoCompleto.match(/\((ATIVO|CANCELADO|SUSPENSO|NAO IDENTIFICADO)\)/i);
                         textoParaCopiar += ` (${statusCliente ? statusCliente[1] : "NAO IDENTIFICADO"})`;
                     }
 
-                    // Lógica para adicionar a rede
                     if (state.copiarNomeRede) {
                         let redeCliente = (c.data.rede?.rede || "").replace(/Card \d+ Porta \d+$/i, "").trim();
                         if(redeCliente) textoParaCopiar += ` || ${redeCliente}`;
@@ -871,7 +949,6 @@
         });
 
         // --- PREENCHIMENTO INICIAL ---
-        // Popula o HUD com os dados que já foram coletados
         finalizarHud();
     }
 
@@ -1046,7 +1123,7 @@
             }
 
             // 3. Define os limites mínimo e máximo para a largura
-            const minWidth = 280; // Do teu CSS
+            const minWidth = 409; // Do teu CSS
             const maxWidth = window.innerWidth * 0.8; // Ex: Max 80% da largura da tela
 
             // 4. Aplica a nova largura ao painel
@@ -1360,8 +1437,8 @@
     // --- 6. INICIALIZAÇÃO DO SCRIPT ---
     // Inicia os componentes persistentes
 
-    iniciarListenerDeColarCoordenadas();
-    iniciarInterceptadorXHR();
+    //iniciarListenerDeColarCoordenadas();
+    //iniciarInterceptadorXHR();
 
     // --- 7. ATIVADOR POR TECLA ---
     // Ouve por a tecla "+" do Numpad para ligar/desligar o HUD
@@ -1381,5 +1458,58 @@
             }
         }
     });
+
+    /**
+     * (NOVO) LÓGICA DE INTERCEÇÃO DO GOOGLE MAPS
+     * Vigia até que a API do Google Maps esteja pronta, e então
+     * "substitui" o construtor do Mapa para capturar a instância.
+     */
+    function iniciarInterceptadorDoMapa() {
+        // Flags globais (necessárias por causa do @grant none)
+        window.__googleMapsApiDisponivel__ = false;
+        window.__googleMapInstancia__ = null;
+        window.__mapCaptureActive__ = false;
+        window.__mapClickListener__ = null;
+
+        let checkGoogleInterval = setInterval(() => {
+            // 1. Espera a API (google.maps) estar disponível
+            // Como estamos em @grant none, acedemos a 'window' diretamente
+            if (typeof window.google === 'object' && typeof window.google.maps === 'object') {
+
+                clearInterval(checkGoogleInterval);
+                window.__googleMapsApiDisponivel__ = true;
+
+                // --- A LÓGICA (MONKEY PATCH) ---
+                console.log('[HUD Script] API do Google Maps detectada. A interceptar o construtor do Mapa...');
+
+                // 2. Guarda uma cópia do construtor original
+                const originalMapConstructor = window.google.maps.Map;
+
+                // 3. Sobrescreve o construtor
+                window.google.maps.Map = function(...args) {
+
+                    // 4. Chama o construtor original
+                    const mapInstance = new originalMapConstructor(...args);
+
+                    // 5. CAPTURA A INSTÂNCIA!
+                    if (!window.__googleMapInstancia__) {
+                        console.log('%c[HUD Script] Instância principal do Mapa CAPTURADA!', 'color: green; font-weight: bold;');
+                        window.__googleMapInstancia__ = mapInstance;
+                    }
+
+                    // 6. Retorna o mapa para o script do site
+                    return mapInstance;
+                };
+            }
+        }, 100); // Verifica a cada 100ms
+    }
+
+    // --- INICIAÇÃO (FINAL) ---
+    // (A tua inicialização existente)
+    iniciarListenerDeColarCoordenadas();
+    iniciarInterceptadorXHR();
+
+    // (NOVO) Inicia o interceptador do mapa
+    iniciarInterceptadorDoMapa();
 
 })();
