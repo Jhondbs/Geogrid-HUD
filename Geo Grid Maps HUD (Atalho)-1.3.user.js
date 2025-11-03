@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Geogrid com AutoComplete
 // @namespace    http://tampermonkey.net/
-// @version      1.8
+// @version      1.9
 // @description  Adiciona um HUD com informações de clientes e atalhos no Geo Grid, ativado pela tecla "+" do Numpad.
 // @author       (Seu Nome Aqui)
 // @match        http://172.16.6.57/geogrid/aconcagua/*
@@ -388,7 +388,6 @@
         checkbox.id = id;
         checkbox.checked = checked;
 
-        // MUDANÇA AQUI:
         checkbox.addEventListener("change", () => {
             onChange(checkbox.checked); // 1. Atualiza o estado (state)
             saveSettings();             // 2. Salva o novo estado no localStorage
@@ -440,6 +439,7 @@
     function atualizarElementosIndesejados() {
         const seletores = "div.componente-topo > div.conteudo > div.bloco1, .componente-rodape";
         const elementos = document.querySelectorAll(seletores);
+        document.querySelector('#launcher').remove();
         // 'none' se for para remover, '' (vazio) para restaurar ao padrão
         const displayValor = state.removerIndesejado ? 'none' : '';
         elementos.forEach(el => {
@@ -500,7 +500,7 @@
 
         // --- LIMPEZA DA PÁGINA ORIGINAL ---
         atualizarElementosIndesejados();
-        document.querySelectorAll(".menu-lateral-container, .menu-lateral-direito.menu-lateral-rota.absolute").forEach(el => { el.style.overflow = "auto"; });
+        //document.querySelectorAll(".menu-lateral-container, .menu-lateral-direito.menu-lateral-rota.absolute").forEach(el => { el.style.overflow = "auto"; });
 
         // --- PAINEL PRINCIPAL (HUD) ---
         const painel = document.createElement("div");
@@ -647,7 +647,7 @@
 
         // --- EVENTOS DOS BOTÕES ---
 
-        // (NOVO) Botão Pesquisa Toggle
+        // Botão Pesquisa Toggle
         btnPesquisa.addEventListener("click", () => {
             // 1. Inverte o estado
             state.searchBarVisible = !state.searchBarVisible;
@@ -661,7 +661,7 @@
             // 4. Atualiza a aparência do botão
             btnPesquisa.classList.toggle('active', state.searchBarVisible);
         });
-        // (NOVO) Define o estado inicial do botão de pesquisa
+        // Define o estado inicial do botão de pesquisa
         btnPesquisa.classList.toggle('active', state.searchBarVisible);
 
         // Botão Fechar (agora chama a função dedicada)
@@ -706,7 +706,7 @@
             const content = document.createElement("div");
             content.className = "hud-content";
 
-            // (NOVO) Helper para criar os títulos dos grupos
+            // Helper para criar os títulos dos grupos
             const createSettingsHeader = (title) => {
                 const header = document.createElement("div");
                 header.className = "hud-settings-header";
@@ -838,7 +838,7 @@
 
                     let textoParaCopiar = contrato; // Começa com o contrato
 
-                    // --- (NOVO) LÓGICA PARA ADICIONAR O NOME ---
+                    // --- LÓGICA PARA ADICIONAR O NOME ---
                     if (state.exibirNomeCliente) { // A CONDIÇÃO QUE PEDISTE
                         let nomeCliente = "";
                         if (partes.length > 2) {
@@ -851,13 +851,13 @@
                     }
                     // --- FIM DA LÓGICA DO NOME ---
 
-                    // (Existente) Lógica para adicionar o status
+                    // Lógica para adicionar o status
                     if (state.copiarStatus && contrato !== "Cliente Desconhecido") {
                         let statusCliente = textoCompleto.match(/\((ATIVO|CANCELADO|SUSPENSO|NAO IDENTIFICADO)\)/i);
                         textoParaCopiar += ` (${statusCliente ? statusCliente[1] : "NAO IDENTIFICADO"})`;
                     }
 
-                    // (Existente) Lógica para adicionar a rede
+                    // Lógica para adicionar a rede
                     if (state.copiarNomeRede) {
                         let redeCliente = (c.data.rede?.rede || "").replace(/Card \d+ Porta \d+$/i, "").trim();
                         if(redeCliente) textoParaCopiar += ` || ${redeCliente}`;
@@ -1019,9 +1019,8 @@
         });
 
         // Trava para executar o redimensionamento apenas na carga inicial
-        // Trava para executar o redimensionamento apenas na carga inicial
         if (!isInitialLoadComplete) {
-            // --- CÁLCULO DA ALTURA (JÁ EXISTENTE) ---
+            // --- CÁLCULO DA ALTURA ---
             const headerHeight = cabecalho.offsetHeight;
             const contentHeight = conteudoDiv.scrollHeight;
             const totalHeight = headerHeight + contentHeight + 15; // 15px de padding/margem
@@ -1256,6 +1255,15 @@
                 }, 3000); // 3 segundos
             },
 
+            "solicitaBackup.php": (data) => {
+                setTimeout(() => {atualizarElementosIndesejados();}, 100); // 100ms de espera
+            },
+
+            "funcoesRoteamentoMapa.php": (data) => {
+                setTimeout(() => {
+                    document.querySelectorAll(".menu-lateral-container, .menu-lateral-direito.menu-lateral-rota.absolute").forEach(el => { el.style.overflow = "auto"; });
+                }, 100); // 100ms de espera
+            },
             "carrega_tiposDeEquipamentos.php": (data) => {
                 const codigoPoste = ultimoCodigoPoste || "00000";
                 const codigoParaInserir = `spl. TIPO ${codigoPoste}`;
