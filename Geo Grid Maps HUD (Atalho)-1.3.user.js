@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Geogrid com AutoComplete
 // @namespace    http://tampermonkey.net/
-// @version      1.9
+// @version      1.9.1
 // @description  Adiciona um HUD com informações de clientes e atalhos no Geo Grid, ativado pela tecla "+" do Numpad.
 // @author       (Seu Nome Aqui)
 // @match        http://172.16.6.57/geogrid/aconcagua/*
@@ -439,7 +439,8 @@
     function atualizarElementosIndesejados() {
         const seletores = "div.componente-topo > div.conteudo > div.bloco1, .componente-rodape";
         const elementos = document.querySelectorAll(seletores);
-        document.querySelector('#launcher').remove();
+        const btn_ajuda = document.querySelector('#launcher')
+        if (btn_ajuda) {btn_ajuda.remove()};
         // 'none' se for para remover, '' (vazio) para restaurar ao padrão
         const displayValor = state.removerIndesejado ? 'none' : '';
         elementos.forEach(el => {
