@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Geogrid Tools
 // @namespace    http://tampermonkey.net/
-// @version      1.12
+// @version      1.13
 // @description  Adiciona um HUD com informações de clientes e atalhos no Geo Grid, ativado pela tecla "+" do Numpad.
 // @author       Jhon
 // @match        http://172.16.6.57/geogrid/aconcagua/*
@@ -1586,9 +1586,10 @@
     });
 
     /**
-     * (NOVO) LÓGICA DE INTERCEÇÃO DO GOOGLE MAPS
+     * (MODIFICADO) LÓGICA DE INTERCEÇÃO DO GOOGLE MAPS
      * Vigia até que a API do Google Maps esteja pronta, e então
      * "substitui" o construtor do Mapa para capturar a instância.
+     * ADICIONADO: __hudSearchCircle__ para guardar o círculo de busca.
      */
     function iniciarInterceptadorDoMapa() {
         // Injeta um pequeno snippet que roda no contexto da página (não no sandbox)
@@ -1598,6 +1599,8 @@
             window.__googleMapInstancia__ = window.__googleMapInstancia__ || null;
             window.__mapCaptureActive__ = window.__mapCaptureActive__ || false;
             window.__mapClickListener__ = window.__mapClickListener__ || null;
+            // (NOVA LINHA ADICIONADA AQUI)
+            window.__hudSearchCircle__ = window.__hudSearchCircle__ || null;
 
             // Verifica periodicamente até a API do Google estar disponível
             const check = setInterval(function(){
@@ -1752,6 +1755,153 @@
         }, true); // O 'true' (useCapture) é crucial!
     }
 
+    /**
+     * (MODIFICADO) Intercepta a busca por poste no menu principal,
+     * substituindo a busca lenta do site por nossa chamada de API rápida.
+     * ADICIONADO: Desenha um círculo vermelho no local encontrado.
+     */
+    function iniciarListenerDePesquisaRapida() {
+        // Usamos a fase de 'captura' (true) para nosso listener rodar ANTES
+        // de qualquer listener que o site possa ter no input.
+        document.body.addEventListener('keydown', async function(e) {
+            // 1. Verifica se o 'Enter' foi pressionado
+            if (e.key !== 'Enter') {
+                return;
+            }
+
+            const searchInput = e.target;
+
+            // 2. Verifica se o alvo é o input de pesquisa correto
+            if (!searchInput || !searchInput.matches('input[name="pesquisar"]')) {
+                return; // Não é o input que queremos, não faz nada.
+            }
+
+            // 3. (Fallback) Se este evento foi reenviado por nós após uma falha,
+            //    deixe a ação padrão do site acontecer.
+            if (searchInput.dataset.isHudFallback) {
+                delete searchInput.dataset.isHudFallback; // Limpa a flag
+                return;
+            }
+
+            // 4. Verifica se o valor da pesquisa parece um código de Poste.
+            const searchText = searchInput.value.trim();
+            const posteRegex = /^pt(\d+)$/i; // ex: "pt7542" ou "PT7542"
+            const match = searchText.match(posteRegex);
+
+            if (!match) {
+                // O valor não é um código de poste.
+                // Deixa a função lenta original do site ser executada.
+                return;
+            }
+
+            // 5. É UM CÓDIGO DE POSTE! Interceptamos o evento.
+            console.log('[HUD Script - Pesquisa Rápida] Poste detectado! Interceptando e iniciando busca...');
+            e.preventDefault();
+            e.stopPropagation();
+
+            const posteCode = `PT${match[1]}`;
+            const originalPlaceholder = searchInput.placeholder;
+            searchInput.value = `Buscando ${posteCode}...`;
+            searchInput.disabled = true;
+
+            try {
+                // 6. Monta o payload e faz a requisição
+                const body = new URLSearchParams();
+                body.append('idRazaoSocial', '46');
+                body.append('poste', posteCode);
+                body.append('viabilidade', 'cabos,ficha_equipamento,ficha_terminal');
+                body.append('ficha', 'ficha_poste');
+
+                const response = await new Promise((resolve, reject) => {
+                    GM_xmlhttpRequest({
+                        method: "POST",
+                        url: "http://172.16.6.57/geogrid/aconcagua/php/marcadores/carregaViabilidadeMarcadorJava.php",
+                        data: body.toString(),
+                        headers: { "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8" },
+                        onload: resolve,
+                        onerror: reject,
+                        ontimeout: reject
+                    });
+                });
+
+                const data = JSON.parse(response.responseText);
+                const loc = data?.dados?.[0];
+
+                if (loc && loc.lat && loc.lng) {
+                    // 7. SUCESSO!
+                    console.log(`[HUD Script - Pesquisa Rápida] Sucesso! Coords: ${loc.lat}, ${loc.lng}`);
+
+                    // Acessa a instância do mapa e o 'window' da página
+                    const gw = (typeof unsafeWindow !== 'undefined' ? unsafeWindow : window);
+                    const map = gw.__googleMapInstancia__;
+
+                    if (map && gw.google && gw.google.maps) {
+                        const newCoords = { lat: parseFloat(loc.lat), lng: parseFloat(loc.lng) };
+
+                        // Centraliza o mapa e dá zoom
+                        map.setCenter(newCoords);
+                        map.setZoom(19);
+
+                        // --- (NOVO CÓDIGO DO CÍRCULO) ---
+
+                        // 1. Remove o círculo de busca anterior, se existir
+                        if (gw.__hudSearchCircle__) {
+                            gw.__hudSearchCircle__.setMap(null); // Apaga do mapa
+                            gw.__hudSearchCircle__ = null;       // Limpa a referência
+                        }
+
+                        // 2. Cria o novo círculo vermelho
+                        const newCircle = new gw.google.maps.Circle({
+                            strokeColor: '#FF0000',
+                            strokeOpacity: 0.8,
+                            strokeWeight: 2,
+                            fillColor: '#FF0000',
+                            fillOpacity: 0.35,
+                            map: map,
+                            center: newCoords,
+                            radius: 2 // Raio em metros (ajuste se achar pequeno/grande)
+                        });
+
+                        // 3. Guarda a referência do novo círculo para a próxima busca
+                        gw.__hudSearchCircle__ = newCircle;
+
+                        // --- (FIM DO NOVO CÓDIGO) ---
+
+                        searchInput.value = posteCode; // Deixa o código formatado no campo
+                    } else {
+                        // Caso o mapa não tenha sido encontrado
+                        console.error('[HUD Script - Pesquisa Rápida] Instância do mapa ou API Google não encontrada!');
+                        searchInput.value = 'Mapa não achado!';
+                    }
+                } else {
+                    // 8. FALHA (API retornou sem dados) -> Aciona o Fallback
+                    console.warn('[HUD Script - Pesquisa Rápida] Poste não encontrado via API. Acionando busca padrão do site...');
+                    triggerFallbackSearch(searchText, searchInput);
+                }
+            } catch (err) {
+                // 9. FALHA (Erro de rede/JSON) -> Aciona o Fallback
+                console.error('[HUD Script - Pesquisa Rápida] Erro na requisição. Acionando busca padrão do site...', err);
+                triggerFallbackSearch(searchText, searchInput);
+            } finally {
+                // Garante que o input seja reativado
+                searchInput.disabled = false;
+                searchInput.placeholder = originalPlaceholder;
+            }
+
+            function triggerFallbackSearch(searchText, searchInput) {
+                searchInput.value = searchText; // Restaura o texto original
+                searchInput.dataset.isHudFallback = 'true'; // Adiciona a flag
+
+                // Cria e dispara um novo evento 'Enter' que nosso script irá ignorar
+                // mas que o listener do site irá capturar.
+                const enterEvent = new KeyboardEvent('keydown', {
+                    key: 'Enter', code: 'Enter', bubbles: true
+                });
+                searchInput.dispatchEvent(enterEvent);
+            }
+
+        }, true);
+    };
 
     // --- INICIAÇÃO (FINAL) ---
     // (A tua inicialização existente)
@@ -1763,5 +1913,6 @@
 
     // (NOVO) Inicia o listener de busca por poste
     iniciarListenerDeBuscaPoste();
+    iniciarListenerDePesquisaRapida();
 
 })();
