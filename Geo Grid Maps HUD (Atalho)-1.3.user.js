@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Geogrid Tools
 // @namespace    http://tampermonkey.net/
-// @version      1.11
+// @version      1.12
 // @description  Adiciona um HUD com informações de clientes e atalhos no Geo Grid, ativado pela tecla "+" do Numpad.
 // @author       Jhon
 // @match        http://172.16.6.57/geogrid/aconcagua/*
@@ -392,7 +392,7 @@
 
         checkbox.addEventListener("change", () => {
             onChange(checkbox.checked); // 1. Atualiza o estado (state)
-            saveSettings();             // 2. Salva o novo estado no localStorage
+            saveSettings();          // 2. Salva o novo estado no localStorage
         });
 
         labelEl.appendChild(checkbox);
@@ -497,40 +497,40 @@
      * (NOVO) Ativa/Desativa o modo de captura de coordenadas
      */
     function toggleMapCaptureMode() {
-    // Usa unsafeWindow quando disponível (script em sandbox)
-    const gw = (typeof unsafeWindow !== 'undefined') ? unsafeWindow : window;
+        // Usa unsafeWindow quando disponível (script em sandbox)
+        const gw = (typeof unsafeWindow !== 'undefined') ? unsafeWindow : window;
 
-    if (!gw.__googleMapsApiDisponivel__ || !gw.__googleMapInstancia__) {
-        console.error("HUD Script: Captura falhou. API do Google ou Instância do Mapa não encontradas.");
-        return;
+        if (!gw.__googleMapsApiDisponivel__ || !gw.__googleMapInstancia__) {
+            console.error("HUD Script: Captura falhou. API do Google ou Instância do Mapa não encontradas.");
+            return;
+        }
+
+        const map = gw.__googleMapInstancia__;
+        const btnCaptura = document.getElementById('capturaMapaBtn');
+
+        // Inverte o estado global na página (lembrando que o listener real vive na instância do mapa)
+        gw.__mapCaptureActive__ = !gw.__mapCaptureActive__;
+
+        if (gw.__mapCaptureActive__) {
+            console.log('%c[HUD Script] MODO DE CAPTURA ATIVADO.', 'color: #98c379; font-weight: bold;');
+            // Guarda o listener criado no objeto da página (retornado pelo addListener)
+            gw.__mapClickListener__ = map.addListener('click', handleMapCaptureClick);
+            // Muda cursor
+            try { map.setOptions({ draggableCursor: 'crosshair' }); } catch (e) {}
+            if (btnCaptura) btnCaptura.classList.add('active');
+        } else {
+            console.log('%c[HUD Script] MODO DE CAPTURA DESATIVADO.', 'color: #e06c75; font-weight: bold;');
+            try {
+                if (gw.__mapClickListener__) {
+                    // removeListener precisa ser chamado no contexto da API do google.maps na página
+                    google.maps.event.removeListener(gw.__mapClickListener__);
+                    gw.__mapClickListener__ = null;
+                }
+                map.setOptions({ draggableCursor: null });
+            } catch (e) {}
+            if (btnCaptura) btnCaptura.classList.remove('active');
+        }
     }
-
-    const map = gw.__googleMapInstancia__;
-    const btnCaptura = document.getElementById('capturaMapaBtn');
-
-    // Inverte o estado global na página (lembrando que o listener real vive na instância do mapa)
-    gw.__mapCaptureActive__ = !gw.__mapCaptureActive__;
-
-    if (gw.__mapCaptureActive__) {
-        console.log('%c[HUD Script] MODO DE CAPTURA ATIVADO.', 'color: #98c379; font-weight: bold;');
-        // Guarda o listener criado no objeto da página (retornado pelo addListener)
-        gw.__mapClickListener__ = map.addListener('click', handleMapCaptureClick);
-        // Muda cursor
-        try { map.setOptions({ draggableCursor: 'crosshair' }); } catch (e) {}
-        if (btnCaptura) btnCaptura.classList.add('active');
-    } else {
-        console.log('%c[HUD Script] MODO DE CAPTURA DESATIVADO.', 'color: #e06c75; font-weight: bold;');
-        try {
-            if (gw.__mapClickListener__) {
-                // removeListener precisa ser chamado no contexto da API do google.maps na página
-                google.maps.event.removeListener(gw.__mapClickListener__);
-                gw.__mapClickListener__ = null;
-            }
-            map.setOptions({ draggableCursor: null });
-        } catch (e) {}
-        if (btnCaptura) btnCaptura.classList.remove('active');
-    }
-}
 
     // --- 3. ESTADO GLOBAL E DADOS COLETADOS ---
 
@@ -1389,179 +1389,182 @@
             return origSend.call(this, body);
         };
     }
-    //Colar Coordenadas (atualizado com suporte a shortlinks via GM_xmlhttpRequest)
-function iniciarListenerDeColarCoordenadas() {
-    // Se já foi instalado no contexto da página, não reinstala
-    try {
-        if (unsafeWindow.__coordenadasListener__) return;
-        unsafeWindow.__coordenadasListener__ = true;
-    } catch (err) {
-        // Em casos estranhos onde unsafeWindow não existe, tenta usar window (fallback)
-        if (window.__coordenadasListener__) return;
-        window.__coordenadasListener__ = true;
-    }
 
-    document.body.addEventListener('paste', async function(e) {
-        // Só age ao colar em um input[name="latitude"]
-        if (!e.target || !e.target.matches || !e.target.matches('input[name="latitude"]')) return;
+    // --- CÓDIGOS NOVOS (INÍCIO) ---
 
-        const pastedText = (e.clipboardData || window.clipboardData).getData('text') || '';
-        const raw = pastedText.trim();
-        if (!raw) return;
-
-        // Referência aos inputs (poderá haver vários)
-        const latInputs = document.querySelectorAll('input[name="latitude"]');
-        const lonInputs = document.querySelectorAll('input[name="longitude"]');
-
-        // Feedback visual temporário
-        latInputs.forEach(i => i.value = "carregando...");
-        lonInputs.forEach(i => i.value = "carregando...");
-
-        // Helper para preencher
-        function preencher(lat, lon) {
-            if (!lat || !lon) return;
-            latInputs.forEach(i => i.value = lat);
-            lonInputs.forEach(i => i.value = lon);
+    //Colar Coordenadas (CORRIGIDO - V3)
+    function iniciarListenerDeColarCoordenadas() {
+        // Se já foi instalado no contexto da página, não reinstala
+        try {
+            if (unsafeWindow.__coordenadasListener__) return;
+            unsafeWindow.__coordenadasListener__ = true;
+        } catch (err) {
+            // Em casos estranhos onde unsafeWindow não existe, tenta usar window (fallback)
+            if (window.__coordenadasListener__) return;
+            window.__coordenadasListener__ = true;
         }
 
-        // Detecta coordenadas diretas no texto colado
-        const coordMatch = raw.match(/-?\d+\.\d+/g);
-        if (coordMatch && coordMatch.length >= 2) {
-            e.preventDefault();
-            // Usa os dois primeiros números encontrados
-            const latRaw = coordMatch[0];
-            const lonRaw = coordMatch[1];
-            // Mantém sinal conforme colado (não forçamos hífen extra aqui)
-            preencher(latRaw, lonRaw);
-            return;
-        }
+        document.body.addEventListener('paste', async function(e) {
+            // Só age ao colar em um input[name="latitude"]
+            if (!e.target || !e.target.matches || !e.target.matches('input[name="latitude"]')) return;
 
-        // Detecta links (short e long)
-        const shortlinkPattern = /\b(?:https?:\/\/)?(?:maps\.app\.goo\.gl|goo\.gl\/maps|goo\.gl)\//i;
-        const longlinkPattern  = /\bhttps?:\/\/(?:www\.)?google\.[^\/]+\/maps/i;
+            const pastedText = (e.clipboardData || window.clipboardData).getData('text') || '';
+            const raw = pastedText.trim();
+            if (!raw) return;
 
-        if (shortlinkPattern.test(raw) || longlinkPattern.test(raw)) {
-            e.preventDefault();
+            // Referência aos inputs (poderá haver vários)
+            const latInputs = document.querySelectorAll('input[name="latitude"]');
+            const lonInputs = document.querySelectorAll('input[name="longitude"]');
 
-            try {
-                // Resolve shortlinks via GM_xmlhttpRequest (para contornar CORS),
-                // e use fetch para outros links (fetch funciona para muitos casos).
-                const shouldUseGM = shortlinkPattern.test(raw);
+            // Helper para preencher
+            function preencher(lat, lon) {
+                if (!lat || !lon) return;
+                latInputs.forEach(i => i.value = lat);
+                lonInputs.forEach(i => i.value = lon);
+            }
 
-                let resolved = { url: raw, html: '' };
+            // --- LÓGICA DE PASTE ---
 
-                if (shouldUseGM && typeof GM_xmlhttpRequest === 'function') {
-                    resolved = await resolveShortlinkWithGM(raw);
-                } else {
-                    resolved = await resolveShortlinkFetch(raw);
-                }
+            // 1. Detecta coordenadas diretas no texto colado
+            const coordMatch = raw.match(/-?\d+\.\d+/g);
+            if (coordMatch && coordMatch.length >= 2) {
+                console.log('[HUD Script - Paste] Coordenadas diretas detectadas.');
+                e.preventDefault();
+                const latRaw = coordMatch[0];
+                const lonRaw = coordMatch[1];
+                preencher(latRaw, lonRaw);
+                return;
+            }
 
-                const urlFinal = resolved.url || raw;
-                const htmlFinal = resolved.html || '';
+            // 2. Detecta código de Poste (ex: PT12345)
+            const posteRegex = /^pt(\d+)$/i;
+            if (posteRegex.test(raw)) {
+                // É um código de poste.
+                // NÃO chame e.preventDefault().
+                // Apenas retorne, para que o 'paste' padrão ocorra.
+                console.log('[HUD Script - Paste] Código de Poste detectado. Permitindo paste padrão.');
+                return;
+            }
 
-                // Extrai coordenadas da URL final primeiramente
-                let coords = extractCoords(urlFinal);
+            // 3. Detecta links (short e long)
+            const shortlinkPattern = /\b(?:https?:\/\/)?(?:maps\.app\.goo\.gl|goo\.gl\/maps|goo\.gl)\//i;
+            const longlinkPattern  = /\bhttps?:\/\/(?:www\.)?google\.[^\/]+\/maps/i;
 
-                // Se não encontrou, tenta extrair do HTML carregado
-                if ((!coords || !coords.lat) && htmlFinal) {
-                    const htmlCoords = extractCoords(htmlFinal);
-                    if (htmlCoords) coords = htmlCoords;
-                }
+            if (shortlinkPattern.test(raw) || longlinkPattern.test(raw)) {
+                console.log('[HUD Script - Paste] Link de mapa detectado. Resolvendo...');
+                e.preventDefault();
 
-                if (coords) {
-                    preencher(coords.lat, coords.lon);
-                } else {
-                    // falha na extração
+                // Feedback visual temporário
+                latInputs.forEach(i => i.value = "carregando...");
+                lonInputs.forEach(i => i.value = "carregando...");
+
+                try {
+                    const shouldUseGM = shortlinkPattern.test(raw);
+                    let resolved = { url: raw, html: '' };
+
+                    if (shouldUseGM && typeof GM_xmlhttpRequest === 'function') {
+                        resolved = await resolveShortlinkWithGM(raw);
+                    } else {
+                        resolved = await resolveShortlinkFetch(raw);
+                    }
+
+                    const urlFinal = resolved.url || raw;
+                    const htmlFinal = resolved.html || '';
+
+                    let coords = extractCoords(urlFinal);
+                    if ((!coords || !coords.lat) && htmlFinal) {
+                        const htmlCoords = extractCoords(htmlFinal);
+                        if (htmlCoords) coords = htmlCoords;
+                    }
+
+                    if (coords) {
+                        preencher(coords.lat, coords.lon);
+                    } else {
+                        latInputs.forEach(i => i.value = "erro");
+                        lonInputs.forEach(i => i.value = "erro");
+                    }
+                } catch (err) {
+                    console.error("Falha ao resolver link de mapa:", err);
                     latInputs.forEach(i => i.value = "erro");
                     lonInputs.forEach(i => i.value = "erro");
                 }
-            } catch (err) {
-                console.error("Falha ao resolver link de mapa:", err);
-                latInputs.forEach(i => i.value = "erro");
-                lonInputs.forEach(i => i.value = "erro");
+                return;
             }
-            return;
+
+            // 4. Se não for coordenada, nem poste, nem link, limpa os placeholders
+            console.log('[HUD Script - Paste] Texto colado não reconhecido. Limpando campos.');
+            e.preventDefault(); // Impede que o texto inválido seja colado
+            latInputs.forEach(i => i.value = "");
+            lonInputs.forEach(i => i.value = "");
+
+        }, true); // uso da fase de captura para interceptar antes de inputs do site
+
+        // --- Auxiliares (com a correção do erro de digitação) ---
+
+        // Usa GM_xmlhttpRequest (Tampermonkey) para contornar CORS em shortlinks
+        function resolveShortlinkWithGM(url) {
+            return new Promise((resolve, reject) => {
+                try {
+                    let target = url;
+                    if (!/^https?:\/\//i.test(target)) target = 'https://' + target;
+
+                    GM_xmlhttpRequest({
+                        method: "GET",
+                        url: target,
+                        headers: { "User-Agent": "Mozilla/5.0 (Tampermonkey)" },
+                        onload(response) {
+                            try {
+                                const final = response.finalUrl || response.responseURL || null;
+                                const html = response.responseText || '';
+                                if (final) return resolve({ url: final, html });
+                                const meta = html.match(/<meta\s+http-equiv=["']refresh["']\s+content=["'][^;]+;\s*url=([^"']+)["']/i);
+                                if (meta) return resolve({ url: meta[1], html });
+                                resolve({ url: target, html });
+                            } catch (e) {
+                                reject(e);
+                            }
+                        },
+                        onerror(err) { reject(err); },
+                        ontimeout(err) { reject(err); },
+                    });
+                } catch (e) {
+                    reject(e);
+                }
+            });
         }
 
-        // Se não for coordenada nem link, limpa os placeholders
-        latInputs.forEach(i => i.value = "");
-        lonInputs.forEach(i => i.value = "");
-    }, true); // uso da fase de captura para interceptar antes de inputs do site
-
-    // --- Auxiliares ---
-
-    // Usa GM_xmlhttpRequest (Tampermonkey) para contornar CORS em shortlinks
-    function resolveShortlinkWithGM(url) {
-        return new Promise((resolve, reject) => {
+        // Resolve via fetch (quando GM não é necessário)
+        async function resolveShortlinkFetch(url) {
             try {
                 let target = url;
                 if (!/^https?:\/\//i.test(target)) target = 'https://' + target;
-
-                GM_xmlhttpRequest({
-                    method: "GET",
-                    url: target,
-                    headers: { "User-Agent": "Mozilla/5.0 (Tampermonkey)" },
-                    onload(response) {
-                        try {
-                            // Tampermonkey fornece response.finalUrl em algumas versões; fallback para response.responseURL
-                            const final = response.finalUrl || response.responseURL || null;
-                            const html = response.responseText || '';
-                            if (final) return resolve({ url: final, html });
-                            // tenta meta refresh
-                            const meta = html.match(/<meta\s+http-equiv=["']refresh["']\s+content=["'][^;]+;\s*url=([^"']+)["']/i);
-                            if (meta) return resolve({ url: meta[1], html });
-                            // Se não houver final resolvido, resolve com HTML (pelo menos conseguimos analisar)
-                            resolve({ url: target, html });
-                        } catch (e) {
-                            reject(e);
-                        }
-                    },
-                    onerror(err) { reject(err); },
-                    ontimeout(err) { reject(err); },
-                    // seguir redirects por padrão; se o servidor respondeu com redirect, Tampermonkey costuma devolver a URL final
-                });
+                const resp = await fetch(target, { redirect: "follow" });
+                const html = await resp.text().catch(()=>"");
+                const finalUrl = resp.url || target;
+                return { url: finalUrl, html };
             } catch (e) {
-                reject(e);
+                throw e;
             }
-        });
-    }
+        }
 
-    // Resolve via fetch (quando GM não é necessário)
-    async function resolveShortlinkFetch(url) {
-        try {
-            let target = url;
-            if (!/^https?:\/\//i.test(target)) target = 'https://' + target;
-            const resp = await fetch(target, { redirect: "follow" });
-            const html = await resp.text().catch(()=>"");
-            const finalUrl = resp.url || target;
-            return { url: finalUrl, html };
-        } catch (e) {
-            // Rejeita para o chamador tratar
-            throw e;
+        // Extrai coordenadas de texto/HTML (CORRIGIDO O ERRO DE DIGITAÇÃO)
+        function extractCoords(text) {
+            if (!text) return null;
+            let m;
+            if (m = text.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/)) return { lat: m[1], lon: m[2] };
+            if (m = text.match(/@(-?\d+\.\d+),\s*(-?\d+\.\d+)/)) return { lat: m[1], lon: m[2] };
+            if (m = text.match(/[?&]q=(-?\d+\.\d+),\s*(-?\d+\.\d+)/)) return { lat: m[1], lon: m[2] };
+            // --- LINHA CORRIGIDA ---
+            if (m = text.match(/[?&]ll=(-?\d+\.\d+),\s*(-?\d+\.\d+)/)) return { lat: m[1], lon: m[2] };
+            // --- FIM DA CORREÇÃO ---
+            const nums = text.match(/-?\d+\.\d+/g);
+            if (nums && nums.length >= 2) return { lat: nums[0], lon: nums[1] };
+            return null;
         }
     }
 
-    // Extrai coordenadas de texto/HTML (mesma lógica do extrator original)
-    function extractCoords(text) {
-        if (!text) return null;
-        let m;
-        if (m = text.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/)) return { lat: m[1], lon: m[2] };
-        if (m = text.match(/@(-?\d+\.\d+),\s*(-?\d+\.\d+)/)) return { lat: m[1], lon: m[2] };
-        if (m = text.match(/[?&]q=(-?\d+\.\d+),\s*(-?\d+\.\d+)/)) return { lat: m[1], lon: m[2] };
-        if (m = text.match(/[?&]ll=(-?\d+\.\d+),\s*(-?\d+\.\d+)/)) return { lat: m[1], lon: m[2] };
-        const nums = text.match(/-?\d+\.\d+/g);
-        if (nums && nums.length >= 2) return { lat: nums[0], lon: nums[1] };
-        return null;
-    }
-}
-
-
-
     // --- 6. INICIALIZAÇÃO DO SCRIPT ---
-    // Inicia os componentes persistentes
-
-    //iniciarListenerDeColarCoordenadas();
-    //iniciarInterceptadorXHR();
+    // (Movido para cima para agrupar)
 
     // --- 7. ATIVADOR POR TECLA ---
     // Ouve por a tecla "+" do Numpad para ligar/desligar o HUD
@@ -1588,51 +1591,166 @@ function iniciarListenerDeColarCoordenadas() {
      * "substitui" o construtor do Mapa para capturar a instância.
      */
     function iniciarInterceptadorDoMapa() {
-    // Injeta um pequeno snippet que roda no contexto da página (não no sandbox)
-    const injected = `(function(){
-        // Flags na página
-        window.__googleMapsApiDisponivel__ = false;
-        window.__googleMapInstancia__ = window.__googleMapInstancia__ || null;
-        window.__mapCaptureActive__ = window.__mapCaptureActive__ || false;
-        window.__mapClickListener__ = window.__mapClickListener__ || null;
+        // Injeta um pequeno snippet que roda no contexto da página (não no sandbox)
+        const injected = `(function(){
+            // Flags na página
+            window.__googleMapsApiDisponivel__ = false;
+            window.__googleMapInstancia__ = window.__googleMapInstancia__ || null;
+            window.__mapCaptureActive__ = window.__mapCaptureActive__ || false;
+            window.__mapClickListener__ = window.__mapClickListener__ || null;
 
-        // Verifica periodicamente até a API do Google estar disponível
-        const check = setInterval(function(){
-            try {
-                if (typeof window.google === 'object' && typeof window.google.maps === 'object') {
-                    clearInterval(check);
-                    window.__googleMapsApiDisponivel__ = true;
-                    console.log('[HUD Script - injected] Google Maps API detectada. Interceptando construtor Map...');
+            // Verifica periodicamente até a API do Google estar disponível
+            const check = setInterval(function(){
+                try {
+                    if (typeof window.google === 'object' && typeof window.google.maps === 'object') {
+                        clearInterval(check);
+                        window.__googleMapsApiDisponivel__ = true;
+                        console.log('[HUD Script - injected] Google Maps API detectada. Interceptando construtor Map...');
 
-                    // Monkey-patch do construtor para capturar a instância
-                    try {
-                        const originalMap = window.google.maps.Map;
-                        window.google.maps.Map = function() {
-                            const mapInstance = new originalMap(...arguments);
-                            try {
-                                if (!window.__googleMapInstancia__) {
-                                    window.__googleMapInstancia__ = mapInstance;
-                                    console.log('[HUD Script - injected] Instância principal do mapa capturada.');
+                        // Monkey-patch do construtor para capturar a instância
+                        try {
+                            const originalMap = window.google.maps.Map;
+                            window.google.maps.Map = function() {
+                                const mapInstance = new originalMap(...arguments);
+                                try {
+                                    if (!window.__googleMapInstancia__) {
+                                        window.__googleMapInstancia__ = mapInstance;
+                                        console.log('[HUD Script - injected] Instância principal do mapa capturada.');
+                                    }
+                                } catch (e) {
+                                    console.error('[HUD Script - injected] erro ao salvar instância do mapa', e);
                                 }
-                            } catch (e) {
-                                console.error('[HUD Script - injected] erro ao salvar instância do mapa', e);
-                            }
-                            return mapInstance;
-                        };
-                    } catch (err) {
-                        console.warn('[HUD Script - injected] não foi possível sobrescrever google.maps.Map', err);
+                                return mapInstance;
+                            };
+                        } catch (err) {
+                            console.warn('[HUD Script - injected] não foi possível sobrescrever google.maps.Map', err);
+                        }
                     }
-                }
-            } catch (e) { /* Ignore */ }
-        }, 100);
-    })();`;
+                } catch (e) { /* Ignore */ }
+            }, 100);
+        })();`;
 
-    const s = document.createElement('script');
-    s.textContent = injected;
-    (document.head || document.documentElement).appendChild(s);
-    // removemos o elemento imediatamente — o script já foi executado no contexto da página
-    s.parentNode.removeChild(s);
-}
+        const s = document.createElement('script');
+        s.textContent = injected;
+        (document.head || document.documentElement).appendChild(s);
+        // removemos o elemento imediatamente — o script já foi executado no contexto da página
+        s.parentNode.removeChild(s);
+    }
+
+
+    /**
+     * (NOVO - V2) Intercepta cliques em botões 'OK' de formulários de coordenadas
+     * para permitir a busca por código de poste (ex: PT12345).
+     *
+     * Esta versão usa DOM traversal (closest/querySelector) para
+     * encontrar os inputs corretos relativos ao botão clicado.
+     */
+    function iniciarListenerDeBuscaPoste() {
+        // Usamos 'captura' (true) para nosso listener rodar ANTES
+        // de qualquer listener que o site possa ter no botão.
+        document.body.addEventListener('click', async function(e) {
+            // 1. Verifica se o alvo é o botão 'OK'
+            // Usamos .closest() para garantir que pegamos o botão mesmo se o clique for num ícone dentro dele
+            const okButton = e.target.closest('button[name="ok"]');
+
+            if (!okButton) {
+                // Não é o botão que queremos, não faz nada.
+                return;
+            }
+
+            console.log('[HUD Script - Busca Poste] Botão OK clicado.');
+
+            // 2. Encontra os inputs de lat/lon RELATIVOS ao botão.
+            // Sobe para o 'buttons-container', depois para o 'div-pai'
+            const commonParent = okButton.closest('.buttons-container')?.parentElement;
+
+            if (!commonParent) {
+                console.warn('[HUD Script - Busca Poste] Não foi possível encontrar o "commonParent" do botão. O clique normal seguirá.');
+                return; // Deixa o clique original seguir se não acharmos a estrutura esperada.
+            }
+
+            const latInput = commonParent.querySelector('input[name="latitude"]');
+            const lonInput = commonParent.querySelector('input[name="longitude"]');
+
+            if (!latInput || !lonInput) {
+                console.warn('[HUD Script - Busca Poste] Inputs de Lat/Lon não encontrados dentro do "commonParent". O clique normal seguirá.');
+                return; // Deixa o clique original seguir
+            }
+
+            // 3. Verifica se o valor da latitude parece um código de Poste.
+            const latValue = latInput.value.trim();
+            const posteRegex = /^pt(\d+)$/i; // ex: "pt7542" ou "PT7542"
+            const match = latValue.match(posteRegex);
+
+            if (!match) {
+                console.log('[HUD Script - Busca Poste] O valor não é um poste. Deixando o clique normal seguir.');
+                return;
+            }
+
+            // 4. É UM CÓDIGO DE POSTE!
+            console.log('[HUD Script - Busca Poste] CÓDIGO DE POSTE DETECTADO! Interceptando clique.');
+            e.preventDefault();
+            e.stopPropagation(); // Impede outros listeners de clique (inclusive o do site)
+
+            // 5. Formata o código do poste para o formato da API (PT maiúsculo)
+            const posteCode = `PT${match[1]}`; // ex: "PT7542"
+            console.log(`[HUD Script - Busca Poste] Buscando API por: ${posteCode}`);
+
+            // 6. Mostra feedback visual para o usuário
+            latInput.value = "Buscando poste...";
+            lonInput.value = "Aguarde...";
+
+            try {
+                // 7. Monta o payload
+                const body = new URLSearchParams();
+                body.append('idRazaoSocial', '46'); // Valor fixo da imagem
+                body.append('poste', posteCode);
+                body.append('viabilidade', 'cabos,ficha_equipamento,ficha_terminal'); // Valor fixo
+                body.append('ficha', 'ficha_poste'); // Valor fixo
+
+                // 8. Faz a requisição (vamos usar 'await' para facilitar a leitura)
+                const response = await new Promise((resolve, reject) => {
+                    GM_xmlhttpRequest({
+                        method: "POST",
+                        url: "http://172.16.6.57/geogrid/aconcagua/php/marcadores/carregaViabilidadeMarcadorJava.php",
+                        data: body.toString(),
+                        headers: {
+                            "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8"
+                        },
+                        onload: resolve,
+                        onerror: reject,
+                        ontimeout: reject
+                    });
+                });
+
+                // 9. Processa a resposta
+                const data = JSON.parse(response.responseText);
+                const loc = data?.dados?.[0];
+
+                if (loc && loc.lat && loc.lng) {
+                    console.log(`[HUD Script - Busca Poste] Sucesso! Coordenadas: ${loc.lat}, ${loc.lng}`);
+                    // 10. SUCESSO! Preenche os campos
+                    latInput.value = loc.lat;
+                    lonInput.value = loc.lng;
+
+                    // 11. Clica no botão "OK" novamente.
+                    // Desta vez, o clique não será interceptado (passo 3).
+                    console.log('[HUD Script - Busca Poste] Preenchido. Executando clique original...');
+                    okButton.click();
+
+                } else {
+                    console.warn('[HUD Script - Busca Poste] Poste não encontrado ou resposta inválida:', data);
+                    latInput.value = "Poste não encontrado";
+                    lonInput.value = "";
+                }
+            } catch (err) {
+                console.error('[HUD Script - Busca Poste] Erro na requisição ou parsing:', err);
+                latInput.value = "Erro (Ver console F12)";
+                lonInput.value = "";
+            }
+
+        }, true); // O 'true' (useCapture) é crucial!
+    }
 
 
     // --- INICIAÇÃO (FINAL) ---
@@ -1642,5 +1760,8 @@ function iniciarListenerDeColarCoordenadas() {
 
     // (NOVO) Inicia o interceptador do mapa
     iniciarInterceptadorDoMapa();
+
+    // (NOVO) Inicia o listener de busca por poste
+    iniciarListenerDeBuscaPoste();
 
 })();
