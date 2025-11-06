@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Geogrid Tools
 // @namespace    http://tampermonkey.net/
-// @version      2.5
+// @version      2.6
 // @description  Adiciona um HUD com informações de clientes e atalhos no Geo Grid, ativado pela tecla "+" do Numpad.
 // @author       Jhon
 // @match        http://172.16.6.57/geogrid/aconcagua/*
@@ -28,6 +28,7 @@
     // LÓGICA DE CONFIGURAÇÕES (LocalStorage)
     const STORAGE_KEY = "geoGridHudSettings";
     const DEFAULT_SETTINGS = {
+        modoClaro: false,
         copiarCoordenadas: false,
         removerIndesejado: true,
         exibirNomeCliente: false,
@@ -42,6 +43,7 @@
     // ESTILOS (CSS)
     const cssStyles = `
         :root {
+            /* Modo Escuro (Padrão) */
             --hud-bg: #282c34;
             --hud-bg-light: #3a3f4b;
             --hud-border: #4e5463;
@@ -52,6 +54,60 @@
             --hud-red: #e06c75;
             --hud-orange: #d19a66;
             --hud-font: 'Segoe UI', Roboto, sans-serif;
+        }
+
+        /* (NOVO) Definições de Cores do Modo Claro */
+        body.hud-light-mode {
+            --hud-bg: #f4f6f8;             /* Fundo principal (branco suave) */
+            --hud-bg-light: #ffffff;       /* Fundo dos cabeçalhos (branco) */
+            --hud-border: #d1d5da;         /* Bordas (cinza claro) */
+            --hud-text: #24292e;           /* Texto principal (preto suave) */
+            --hud-text-header: #1b1f23;    /* Texto dos cabeçalhos (preto forte) */
+            --hud-accent: #0366d6;         /* Cor de destaque (azul) */
+            --hud-green: #28a745;         /* Verde */
+            --hud-red: #d73a49;           /* Vermelho */
+            --hud-orange: #f66a0a;        /* Laranja */
+        }
+
+        /* (NOVO) Ajustes finos para o Modo Claro */
+        /* Ajusta o placeholder do input de pesquisa */
+        body.hud-light-mode .hud-search-input::placeholder {
+            color: #586069;
+        }
+        /* Ajusta a cor dos ícones dos botões da HUD */
+        body.hud-light-mode .hud-btn {
+            color: var(--hud-text);
+        }
+        body.hud-light-mode .hud-btn:hover {
+            color: white; /* Cor do ícone no hover (branco) */
+        }
+        body.hud-light-mode .hud-btn.active {
+             color: white; /* Cor do ícone ativo (branco) */
+        }
+        /* Ajusta o botão de fechar */
+        body.hud-light-mode .hud-btn-close {
+            color: var(--hud-text);
+        }
+        body.hud-light-mode .hud-btn-close:hover {
+            color: var(--hud-red);
+        }
+        /* Ajusta o texto da rede no painel principal */
+        body.hud-light-mode .hud-network-header strong {
+            color: var(--hud-accent);
+        }
+        /* Ajusta o texto da porta no painel principal */
+        body.hud-light-mode .hud-client-row .port {
+            color: var(--hud-accent);
+        }
+        /* Ajusta o texto do nome do cliente */
+        body.hud-light-mode .hud-client-name {
+            color: var(--hud-text);
+            opacity: 0.8;
+        }
+        /* Ajusta o fundo da textarea de anotações */
+        body.hud-light-mode #blocoNotasHUD textarea {
+            background: var(--hud-bg);
+            color: var(--hud-text);
         }
         .hud-panel {
             position: fixed;
@@ -444,6 +500,7 @@
             opacity: 1;
             top: 40px;
         }
+
     `;
 
     // --- 2. FUNÇÕES AUXILIARES (HELPERS) ---
@@ -565,10 +622,14 @@
             }
         } catch (e) {
             console.error("Erro ao carregar configurações do HUD:", e);
-            // Se houver um erro, continua com as configurações padrão
         }
-        // Junta as padrões com as salvas (as salvas têm prioridade)
-        return { ...DEFAULT_SETTINGS, ...saved };
+
+        const settings = { ...DEFAULT_SETTINGS, ...saved };
+
+        // (NOVO) Aplica o modo claro imediatamente ao carregar as configs
+        toggleModoClaro(settings.modoClaro);
+
+        return settings;
     }
 
     /**
@@ -584,6 +645,14 @@
             }
         }
         localStorage.setItem(STORAGE_KEY, JSON.stringify(settingsToSave));
+    }
+
+    function toggleModoClaro(ativar) {
+        if (ativar) {
+            document.body.classList.add('hud-light-mode');
+        } else {
+            document.body.classList.remove('hud-light-mode');
+        }
     }
 
     async function copyToClipboard(text, successElement) {
@@ -1104,6 +1173,16 @@
 
             // --- Grupo 1: Interface e Exibição ---
             content.appendChild(createSettingsHeader("Interface e Exibição"));
+
+            content.appendChild(createCheckbox(
+                'modoClaro',
+                'Modo Claro',
+                state.modoClaro,
+                val => {
+                    state.modoClaro = val;
+                    toggleModoClaro(val); // Chama a função que aplica a classe
+                }
+            ));
 
             content.appendChild(createCheckbox(
                 'searchBarVisible',
