@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Geogrid Tools
 // @namespace    http://tampermonkey.net/
-// @version      2.1
+// @version      2.5
 // @description  Adiciona um HUD com informações de clientes e atalhos no Geo Grid, ativado pela tecla "+" do Numpad.
 // @author       Jhon
 // @match        http://172.16.6.57/geogrid/aconcagua/*
@@ -249,9 +249,301 @@
         .hud-settings-header:first-of-type {
             margin-top: 0;
         }
+        /* --- ESTILOS DO PAINEL DE CADASTRO DE EQUIPAMENTO --- */
+        .hud-cadastro-content {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            box-sizing: border-box; /* Garante que o padding não quebre a altura */
+            background-color: var(--hud-bg); /* Garante o fundo */
+        }
+        .hud-cadastro-body {
+            flex-grow: 1; /* Faz o corpo crescer para preencher o espaço */
+            overflow-y: auto;
+            padding: 10px 15px;
+            /* Estilos da barra de rolagem (copiados do .hud-content) */
+            scrollbar-width: thin;
+            scrollbar-color: var(--hud-border) var(--hud-bg);
+        }
+        .hud-cadastro-body::-webkit-scrollbar { width: 8px; }
+        .hud-cadastro-body::-webkit-scrollbar-track { background: var(--hud-bg); }
+        .hud-cadastro-body::-webkit-scrollbar-thumb {
+            background-color: var(--hud-border);
+            border-radius: 4px;
+            border: 2px solid var(--hud-bg);
+        }
+        .hud-cadastro-header {
+            color: var(--hud-accent);
+            font-weight: 600;
+            font-size: 14px;
+            padding-bottom: 4px;
+            margin-top: 10px;
+            margin-bottom: 8px;
+            border-bottom: 1px solid var(--hud-border);
+        }
+        .hud-cadastro-header:first-of-type {
+            margin-top: 0;
+        }
+        .hud-btn-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .hud-toggle-btn {
+            background: var(--hud-bg-light);
+            border: 1px solid var(--hud-border);
+            color: var(--hud-text);
+            padding: 8px 12px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: background-color 0.2s, color 0.2s, box-shadow 0.2s;
+            user-select: none;
+        }
+        .hud-toggle-btn:hover {
+            background-color: #4e5463; /* Tom de hover */
+        }
+        .hud-toggle-btn.active {
+            background-color: var(--hud-accent);
+            color: white;
+            border-color: var(--hud-accent);
+            box-shadow: 0 0 8px rgba(97, 175, 239, 0.5);
+        }
+        /* Estilo para o grupo do input 'Rede' */
+        .hud-input-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: var(--hud-bg-light);
+            border: 1px solid var(--hud-border);
+            padding: 8px 12px;
+            border-radius: 5px;
+            flex-grow: 1; /* Faz o input ocupar o espaço */
+            min-width: 200px; /* Largura mínima */
+        }
+        .hud-input-group label {
+            font-size: 13px;
+            color: var(--hud-text);
+            white-space: nowrap;
+        }
+        .hud-cadastro-input {
+            width: 100%;
+            background-color: var(--hud-bg); /* Mais escuro que o fundo do grupo */
+            border: 1px solid var(--hud-border);
+            color: var(--hud-text);
+            padding: 5px;
+            border-radius: 4px;
+            font-family: var(--hud-font);
+            font-size: 13px;
+        }
+        /* Estilos do Rodapé (Footer) */
+        .hud-cadastro-footer {
+            padding: 10px 15px;
+            border-top: 1px solid var(--hud-border);
+            background: var(--hud-bg-light);
+            display: flex;
+            justify-content: flex-end; /* Alinha botões à direita */
+            gap: 10px;
+            flex-shrink: 0; /* Impede o rodapé de encolher */
+        }
+        .hud-footer-btn {
+            background: var(--hud-bg);
+            border: 1px solid var(--hud-border);
+            color: var(--hud-text);
+            padding: 8px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: background-color 0.2s, color 0.2s;
+        }
+        .hud-footer-btn:hover {
+            background-color: #4e5463;
+        }
+        .hud-footer-btn.primary { /* Botão Confirmar */
+            background-color: var(--hud-green);
+            border-color: var(--hud-green);
+            color: #ffffff;
+        }
+        .hud-footer-btn.primary:hover {
+            background-color: #a8d389;
+        }
+        .hud-footer-btn.danger { /* Botão Cancelar */
+             color: var(--hud-red);
+             border-color: var(--hud-red);
+             background: transparent;
+        }
+        .hud-footer-btn.danger:hover {
+             background-color: rgba(224, 108, 117, 0.2);
+        }
+        /* --- ESTILOS DO AUTOCOMPLETE DE REDE --- */
+        .hud-input-group {
+            /* Precisamos disso para posicionar a caixa de sugestões */
+            position: relative;
+        }
+        .hud-autocomplete-suggestions {
+            display: none; /* Começa escondido */
+            position: absolute;
+            top: 100%; /* Aparece logo abaixo do input */
+            left: 0;
+            right: 0;
+            background: var(--hud-bg-light);
+            border: 1px solid var(--hud-border);
+            border-top: none;
+            border-radius: 0 0 5px 5px;
+            z-index: 100;
+            max-height: 200px;
+            overflow-y: auto;
+            /* Estilos da barra de rolagem */
+            scrollbar-width: thin;
+            scrollbar-color: var(--hud-border) var(--hud-bg);
+        }
+        .hud-autocomplete-suggestions::-webkit-scrollbar { width: 8px; }
+        .hud-autocomplete-suggestions::-webkit-scrollbar-track { background: var(--hud-bg-light); }
+        .hud-autocomplete-suggestions::-webkit-scrollbar-thumb {
+            background-color: var(--hud-border);
+            border-radius: 4px;
+        }
+        .hud-suggestion-item {
+            padding: 8px 12px;
+            color: var(--hud-text);
+            font-size: 13px;
+            cursor: pointer;
+            border-bottom: 1px solid var(--hud-border);
+        }
+        .hud-suggestion-item:last-child {
+            border-bottom: none;
+        }
+        .hud-suggestion-item:hover {
+            background-color: var(--hud-accent);
+            color: white;
+        }
+        .hud-suggestion-item.loading {
+            color: var(--hud-orange);
+            cursor: default;
+        }
+        /* --- ESTILOS DO TOAST DE NOTIFICAÇÃO --- */
+        .hud-toast-notification {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: var(--hud-red);
+            color: white;
+            padding: 12px 20px;
+            border-radius: 5px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            font-family: var(--hud-font);
+            font-size: 14px;
+            font-weight: 600;
+            z-index: 2147483647; /* Máximo z-index */
+            opacity: 0;
+            transition: opacity 0.3s, top 0.3s;
+        }
+        .hud-toast-notification.show {
+            opacity: 1;
+            top: 40px;
+        }
     `;
 
     // --- 2. FUNÇÕES AUXILIARES (HELPERS) ---
+
+    // (NOVA FUNÇÃO HELPER) Lida com o 'status: true/false'
+            function fazerRequisicaoDaPagina(url, data, debugInfo) {
+                return new Promise((resolve, reject) => {
+                    const gw = (typeof unsafeWindow !== 'undefined' ? unsafeWindow : window);
+                    if (!gw.jQuery) {
+                        reject("jQuery da página não encontrado");
+                        return;
+                    }
+
+                    gw.jQuery.ajax({
+                        type: "POST",
+                        url: url,
+                        data: data,
+                        dataType: "text",
+                        success: (responseText) => {
+                            // (MODIFICADO) Verifica a resposta do 'salvaEquipamentos'
+                            if (url.includes("salvaEquipamentos.php") || url.includes("cadastraCaboLigacao.php")) {
+                                try {
+                                    const data = JSON.parse(responseText);
+                                    if (data.status === true || data.status === "true") {
+                                        resolve({ status: 'fulfilled', value: `Sucesso: ${debugInfo}`, response: responseText });
+                                    } else {
+                                        // A API retornou 'status: false', rejeita com a mensagem de erro
+                                        reject(data.mensagem || `Erro ao salvar ${debugInfo}`);
+                                    }
+                                } catch (e) {
+                                    reject(`Erro ao parsear resposta de ${url}: ${responseText}`);
+                                }
+                            } else {
+                                // Comportamento original para as outras chamadas (api.php, etc)
+                                resolve({ status: 'fulfilled', value: `Sucesso: ${debugInfo}`, response: responseText });
+                            }
+                        },
+                        error: (xhr, textStatus, errorThrown) => {
+                            console.error(`[HUD Script] Erro de jQuery.ajax em ${debugInfo}:`, textStatus, errorThrown);
+                            reject(`Erro ${xhr.status} ao processar ${debugInfo} (${textStatus})`);
+                        }
+                    });
+                });
+            }
+
+    /** (NOVO) Retorna a data de hoje no formato YYYY-MM-DD */
+    function getTodayDate() {
+        const today = new Date();
+        const yyyy = today.getFullYear();
+        const mm = String(today.getMonth() + 1).padStart(2, '0'); // Meses são 0-indexados
+        const dd = String(today.getDate()).padStart(2, '0');
+        return `${yyyy}-${mm}-${dd}`;
+    }
+
+    /** (NOVO) Mostra uma notificação toast personalizada */
+    function showHudToast(message, type = 'error') {
+        // Remove qualquer toast existente
+        document.querySelector('.hud-toast-notification')?.remove();
+
+        const toast = document.createElement('div');
+        toast.className = 'hud-toast-notification hud-element';
+        toast.textContent = message;
+
+        // (Opcional: mudar a cor com base no tipo)
+        if (type === 'success') {
+            toast.style.backgroundColor = 'var(--hud-green)';
+        } else {
+            toast.style.backgroundColor = 'var(--hud-red)';
+        }
+
+        document.body.appendChild(toast);
+
+        // Animação de entrada
+        setTimeout(() => {
+            toast.classList.add('show');
+        }, 10);
+
+        // Animação de saída
+        setTimeout(() => {
+            toast.classList.remove('show');
+            // Remove o elemento após a animação
+            setTimeout(() => {
+                toast.remove();
+            }, 300);
+        }, 3000); // Toast fica visível por 3 segundos
+    }
+
+    /** (NOVO) Injeta os estilos CSS do HUD na página, uma única vez. */
+    function injetarEstilosGlobais() {
+        // Se os estilos já foram injetados, não faz nada.
+        if (document.getElementById('hud-global-styles')) {
+            return;
+        }
+
+        console.log('[HUD Script] Injetando estilos CSS globais...');
+        const styleSheet = document.createElement("style");
+        styleSheet.id = "hud-global-styles"; // ID único
+        styleSheet.innerText = cssStyles;
+        document.head.appendChild(styleSheet);
+    }
 
     function debounce(func, delay) {
         let timeout;
@@ -329,6 +621,7 @@
         }
     }
 
+    // Substitua a sua função createDraggablePanel por esta
     function createDraggablePanel(id, title, contentElement, position) {
         const panel = document.createElement("div");
         panel.id = id;
@@ -350,8 +643,10 @@
         closeBtn.style.marginLeft = "auto";
         closeBtn.onclick = () => {
             panel.remove();
+            // (BLOCO MODIFICADO)
             if (id === 'blocoNotasHUD') state.notasAtivo = false;
             if (id === 'blocoPredefinicoesHUD') state.configAtivo = false;
+            if (id === 'hudAdicionarEquipamento') state.cadastroEquipamentoAtivo = false; // <-- LINHA ADICIONADA
         };
         header.appendChild(closeBtn);
         panel.appendChild(header);
@@ -543,7 +838,9 @@
         ...persistentSettings,
         notasAtivo: false,
         configAtivo: false,
-        searchQuery: '', // (ADICIONADO) Adiciona o estado da pesquisa
+        cadastroEquipamentoAtivo: false,
+        cadastroEquipamentoFallback: false,
+        searchQuery: '',
     };
     const state = window.__hudState__;
 
@@ -555,18 +852,27 @@
     let isInitialLoadComplete = false;
     let ultimaAPI;
     let ultimoCodigoPoste = null;
+    let ultimoCodigoEquipamentoPai = null;
 
     // --- 4. LÓGICA DE CRIAÇÃO E REMOÇÃO DO HUD ---
 
     /**
-     * Remove todos os elementos do HUD da página.
+     * (MODIFICADO) Remove apenas os elementos do HUD PRINCIPAL da página.
      */
     function removerHUD() {
-        document.querySelectorAll(".hud-element").forEach(el => el.remove());
-        window.__hudAtivo__ = false;
+        // Remove o painel principal
+        document.querySelector("#hudPainelTeste")?.remove();
+
+        // Remove os painéis "satélite" (Notas e Config)
+        document.querySelector("#blocoNotasHUD")?.remove();
+        document.querySelector("#blocoPredefinicoesHUD")?.remove();
+
+        // (NOTA: Não removemos #hudAdicionarEquipamento aqui,
+        // pois ele tem seu próprio botão 'x' para fechar)
+
+        window.__hudAtivo__ = false; // Flag do HUD principal
         state.notasAtivo = false;
         state.configAtivo = false;
-        // Permite que o HUD se redimensione na próxima vez que for aberto
         isInitialLoadComplete = false;
     }
 
@@ -576,12 +882,6 @@
     function criarHUD() {
         if (window.__hudAtivo__) return; // Já está ativo
         window.__hudAtivo__ = true;
-
-        // --- INJETAR ESTILOS ---
-        const styleSheet = document.createElement("style");
-        styleSheet.className = "hud-element";
-        styleSheet.innerText = cssStyles;
-        document.head.appendChild(styleSheet);
 
         // --- LIMPEZA DA PÁGINA ORIGINAL ---
         atualizarElementosIndesejados();
@@ -960,7 +1260,8 @@
     // --- 5. FUNÇÕES DO INTERCEPTADOR DE API ---
 
     /**
-     * Reseta o estado dos dados coletados.
+     * (MODIFICADO) Reseta o estado dos dados coletados,
+     * mas preserva os códigos de contexto (Pai e Poste) se existirem.
      */
     function resetState() {
         ultimaAPI = null;
@@ -969,7 +1270,9 @@
         infoClientes = {};
         isInitialLoadComplete = false;
         state.searchQuery = ''; // Limpa a pesquisa
-        //ultimoCodigoPoste = null;
+
+        // NÃO limpa ultimoCodigoEquipamentoPai
+        // NÃO limpa ultimoCodigoPoste
     }
 
     /**
@@ -1154,10 +1457,34 @@
     function iniciarInterceptadorXHR() {
         // Handlers para cada API que queremos "ouvir"
         const handlers = {
-            "api.php": data => {
+            "api.php": (data, url, bodyParams) => {
+                if (bodyParams && bodyParams.get) {
+                    // --- (INÍCIO DA MODIFICAÇÃO) ---
+                    const controlador = bodyParams.get("controlador");
+                    const metodo = bodyParams.get("metodo");
+                    const codigo = bodyParams.get("codigo");
+
+                    // SÓ captura o código-pai (ex: TA...) se for a chamada de carregar o diagrama
+                    // E IGNORA as chamadas de 'fichaEquipamento'
+                    if (controlador === 'diagrama' && metodo === 'carregarCabosEquipamentos' && codigo) {
+                        ultimoCodigoEquipamentoPai = codigo;
+                        console.log('[HUD Script] Código do equipamento PAI capturado:', ultimoCodigoEquipamentoPai);
+                    }
+                    // --- (FIM DA MODIFICAÇÃO) ---
+                }
+
+                // Lógica original de resetar o HUD de clientes
                 if (data?.equipamentos) {
+                    // (NOTA) Precisamos garantir que isso também não apague nosso código-pai
+                    const codigoPaiPreservado = ultimoCodigoEquipamentoPai;
+                    const codigoPostePreservado = ultimoCodigoPoste;
+
                     resetState(); // Reseta os dados
-                    // Se o HUD estiver aberto, limpa ele
+
+                    // Restaura os códigos
+                    ultimoCodigoEquipamentoPai = codigoPaiPreservado;
+                    ultimoCodigoPoste = codigoPostePreservado;
+
                     const conteudoDiv = document.querySelector("#hudPainelTeste .hud-content");
                     if(conteudoDiv) {
                         // Limpa, mas já adiciona a barra de pesquisa
@@ -1742,27 +2069,53 @@ function iniciarListenerDeColarCoordenadas() {
     }
 
     /**
-     * (MODIFICADO - V2) Intercepta a busca por poste no menu principal.
-     * AGORA USA A API carregaCompletar.php
+     * (MODIFICADO) Intercepta a busca por poste no menu principal.
+     * (NOVO) Se 'CTRL' + 'Enter' for pressionado, ignora o script
+     * e permite a busca padrão do site.
+     * (REMOVIDO) Toda a lógica de pré-carregamento de acessórios foi removida.
      */
     function iniciarListenerDePesquisaRapida() {
         document.body.addEventListener('keydown', async function(e) {
-            if (e.key !== 'Enter') { return; }
+
+            // 1. Verifica se o 'Enter' foi pressionado
+            if (e.key !== 'Enter') {
+                return;
+            }
+
+            // --- (INÍCIO DA NOVA LÓGICA DE BYPASS) ---
+            // 2. Verifica se a tecla 'CTRL' está pressionada
+            if (e.ctrlKey) {
+                console.log('[HUD Script - Pesquisa Rápida] CTRL pressionado. Ignorando script e permitindo busca padrão do site.');
+                // Não faz e.preventDefault(), apenas retorna
+                // para que o listener padrão do site seja executado.
+                return;
+            }
+            // --- (FIM DA NOVA LÓGICA DE BYPASS) ---
 
             const searchInput = e.target;
-            if (!searchInput || !searchInput.matches('input[name="pesquisar"]')) { return; }
 
+            // 3. Verifica se o alvo é o input de pesquisa correto
+            if (!searchInput || !searchInput.matches('input[name="pesquisar"]')) {
+                return;
+            }
+
+            // 4. (Fallback)
             if (searchInput.dataset.isHudFallback) {
                 delete searchInput.dataset.isHudFallback;
                 return;
             }
 
+            // 5. Verifica se o valor da pesquisa parece um código de Poste.
             const searchText = searchInput.value.trim();
             const posteRegex = /^pt(\d+)$/i;
             const match = searchText.match(posteRegex);
 
-            if (!match) { return; }
+            if (!match) {
+                // Não é um poste, deixa a busca padrão do site ocorrer
+                return;
+            }
 
+            // 6. É UM CÓDIGO DE POSTE! Interceptamos o evento.
             console.log('[HUD Script - Pesquisa Rápida] Poste detectado! Interceptando e iniciando busca...');
             e.preventDefault();
             e.stopPropagation();
@@ -1773,35 +2126,23 @@ function iniciarListenerDeColarCoordenadas() {
             searchInput.disabled = true;
 
             try {
-                // --- INÍCIO DAS MODIFICAÇÕES DA API ---
-
-                // 1. (MODIFICADO) Monta o novo payload
+                // 7. Monta o payload e faz a requisição principal
                 const body = new URLSearchParams();
                 body.append('idRazaoSocial', '46');
-                body.append('json[]', posteCode); // Trocado 'poste' por 'json[]'
+                body.append('json[]', posteCode);
                 body.append('viabilidade', 'cabos,ficha_equipamento,ficha_terminal');
-                // O campo 'ficha' foi removido
 
-                // 2. (MODIFICADO) Faz a requisição para a nova URL
-                const response = await new Promise((resolve, reject) => {
-                    GM_xmlhttpRequest({
-                        method: "POST",
-                        url: "http://172.16.6.57/geogrid/aconcagua/php/arquivosComuns/carregaCompletar.php",
-                        data: body.toString(),
-                        headers: { "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8" },
-                        onload: resolve,
-                        onerror: reject,
-                        ontimeout: reject
-                    });
-                });
+                const response = await fazerRequisicaoDaPagina(
+                    "http://172.16.6.57/geogrid/aconcagua/php/arquivosComuns/carregaCompletar.php",
+                    body.toString(),
+                    `Busca Rápida Poste ${posteCode}`
+                );
 
-                // 3. (MODIFICADO) Processa a nova resposta (que é um array direto)
-                const data = JSON.parse(response.responseText);
+                const data = JSON.parse(response.response);
                 const loc = (Array.isArray(data) && data.length > 0) ? data[0] : null;
 
-                // --- FIM DAS MODIFICAÇÕES DA API ---
-
                 if (loc && loc.lat && loc.lng) {
+                    // 8. SUCESSO! (Lógica de UI)
                     console.log(`[HUD Script - Pesquisa Rápida] Sucesso! Coords: ${loc.lat}, ${loc.lng}`);
                     const gw = (typeof unsafeWindow !== 'undefined' ? unsafeWindow : window);
                     const map = gw.__googleMapInstancia__;
@@ -1832,11 +2173,16 @@ function iniciarListenerDeColarCoordenadas() {
                         console.error('[HUD Script - Pesquisa Rápida] Instância do mapa ou API Google não encontrada!');
                         searchInput.value = 'Mapa não achado!';
                     }
+
+                    // --- (LÓGICA DE PRÉ-CARREGAMENTO FOI REMOVIDA DAQUI) ---
+
                 } else {
+                    // 9. FALHA (API retornou sem dados) -> Aciona o Fallback
                     console.warn('[HUD Script - Pesquisa Rápida] Poste não encontrado via API. Acionando busca padrão do site...');
                     triggerFallbackSearch(searchText, searchInput);
                 }
             } catch (err) {
+                // 10. FALHA (Erro de rede/JSON) -> Aciona o Fallback
                 console.error('[HUD Script - Pesquisa Rápida] Erro na requisição. Acionando busca padrão do site...', err);
                 triggerFallbackSearch(searchText, searchInput);
             } finally {
@@ -1856,8 +2202,599 @@ function iniciarListenerDeColarCoordenadas() {
         }, true);
     }
 
+    /**
+     * (MODIFICADO) Intercepta o clique no botão "Adicionar Equipamento"
+     * (FINAL) Adiciona a lógica de validação e criação da "Ponte".
+     * (FINAL) Adiciona verificação de duplicatas e sufixo automático (A, B, C, D).
+     * (FINAL) Corrige 'extensao' para 'expansao'.
+     * (FINAL) Adiciona verificação de status/mensagem no 'salvaEquipamentos'.
+     */
+    function iniciarListenerAdicionarEquipamento() {
+        document.body.addEventListener('click', function(e) {
+
+            // Etapa de Fallback para "Tela Padrão"
+            if (state.cadastroEquipamentoFallback) {
+                console.log('[HUD Script] Flag de fallback detectada. Deixando clique original passar.');
+                state.cadastroEquipamentoFallback = false;
+                return;
+            }
+
+            // 1. Procura pelo botão alvo
+            const addButton = e.target.closest('.adicionar-equipamento-recipiente');
+
+            if (!addButton) { return; }
+
+            // 2. INTERCEPTAÇÃO
+            console.log('[HUD Script] Botão "Adicionar Equipamento" interceptado!');
+            e.preventDefault();
+            e.stopPropagation();
+
+            // 3. Verifica se o painel já está aberto
+            if (state.cadastroEquipamentoAtivo) {
+                console.log('[HUD Script] Painel de cadastro já está ativo.');
+                return;
+            }
+            state.cadastroEquipamentoAtivo = true;
+
+            // 4. Cria o elemento de conteúdo para o nosso novo painel
+            const content = document.createElement("div");
+            content.className = "hud-cadastro-content";
+
+            // 4.1. Cria o 'corpo' do painel
+            const body = document.createElement("div");
+            body.className = "hud-cadastro-body";
+            body.innerHTML = `
+                <div class="hud-cadastro-header">Geral</div>
+                <div class="hud-btn-group">
+                    <div class="hud-input-group">
+                        <label for="hud-cadastro-rede">Rede:</label>
+                        <input type="text" id="hud-cadastro-rede" name="rede" class="hud-cadastro-input" autocomplete="off">
+                    </div>
+                    <button class="hud-toggle-btn" data-value="ponte">Ponte</button>
+                    <button class="hud-toggle-btn" data-value="rede_1x2">1x2 Rede</button>
+                </div>
+
+                <div class="hud-cadastro-header">Splinter 1x2</div>
+                <div class="hud-btn-group">
+                    <button class="hud-toggle-btn" data-value="1x2_5/95">5/95</button>
+                    <button class="hud-toggle-btn" data-value="1x2_10/90">10/90</button>
+                    <button class="hud-toggle-btn" data-value="1x2_15/85">15/85</button>
+                    <button class="hud-toggle-btn" data-value="1x2_20/80">20/80</button>
+                    <button class="hud-toggle-btn" data-value="1x2_30/70">30/70</button>
+                    <button class="hud-toggle-btn" data-value="1x2_50/50">50/50</button>
+                </div>
+
+                <div class="hud-cadastro-header">Splinter 1x8</div>
+                <div class="hud-btn-group">
+                    <button class="hud-toggle-btn" data-value="1x8_cliente">Cliente</button>
+                    <button class="hud-toggle-btn" data-value="1x8_expansao">Expansão</button>
+                </div>
+            `;
+
+            // 4.2. Cria o 'rodapé' do painel
+            const footer = document.createElement("div");
+            footer.className = "hud-cadastro-footer";
+            footer.innerHTML = `
+                <button class="hud-footer-btn" id="hud-cadastro-padrao">Tela Padrão</button>
+                <button class="hud-footer-btn danger" id="hud-cadastro-cancelar">Cancelar</button>
+                <button class="hud-footer-btn primary" id="hud-cadastro-confirmar">Confirmar</button>
+            `;
+
+            // 4.3. Monta o painel
+            content.appendChild(body);
+            content.appendChild(footer);
+
+            // 5. Define as dimensões e a posição inicial
+            const width = 840;
+            const height = 530;
+            const position = {
+                width: `${width}px`,
+                height: `${height}px`,
+                top: (window.innerHeight - height) / 2,
+                left: (window.innerWidth - width) / 2
+            };
+
+            // 6. Cria o painel
+            const newPanel = createDraggablePanel(
+                'hudAdicionarEquipamento',
+                'Cadastro Rápido de Equipamento',
+                content,
+                position
+            );
+
+            // 7. Adiciona a lógica de toggle aos botões
+            newPanel.querySelectorAll('.hud-toggle-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    btn.classList.toggle('active');
+                });
+            });
+
+            // --- LÓGICA DE AUTOCOMPLETE ---
+            const redeInputGroup = newPanel.querySelector('.hud-input-group');
+            const redeInput = newPanel.querySelector('#hud-cadastro-rede');
+            const suggestionsBox = document.createElement('div');
+            suggestionsBox.className = 'hud-autocomplete-suggestions';
+            redeInputGroup.appendChild(suggestionsBox);
+
+            const handleRedeSearch = () => {
+                const searchTerm = redeInput.value.trim();
+                redeInput.dataset.redeId = ''; // Limpa o ID
+
+                if (searchTerm.length < 3) {
+                    suggestionsBox.style.display = 'none';
+                    return;
+                }
+
+                suggestionsBox.innerHTML = '<div class="hud-suggestion-item loading">Buscando redes...</div>';
+                suggestionsBox.style.display = 'block';
+
+                GM_xmlhttpRequest({
+                    method: "GET",
+                    url: `https://api.jupiter.com.br/view/Redes/retornarRedesFibra?rede=${encodeURIComponent(searchTerm)}`,
+                    onload: function(response) {
+                        try {
+                            const data = JSON.parse(response.responseText);
+                            if (data.success === "1" && data.redes && data.redes.length > 0) {
+                                suggestionsBox.innerHTML = '';
+
+                                data.redes.forEach(rede => {
+                                    const itemDiv = document.createElement('div');
+                                    itemDiv.className = 'hud-suggestion-item';
+                                    const formattedText = `${rede.id} - ${rede.descricao}`;
+                                    itemDiv.textContent = formattedText;
+
+                                    itemDiv.addEventListener('click', () => {
+                                        redeInput.value = formattedText;
+                                        redeInput.dataset.redeId = rede.id;
+                                        suggestionsBox.style.display = 'none';
+                                    });
+                                    suggestionsBox.appendChild(itemDiv);
+                                });
+
+                            } else {
+                                suggestionsBox.innerHTML = '<div class="hud-suggestion-item loading">Nenhuma rede encontrada.</div>';
+                            }
+                        } catch (e) {
+                            console.error("[HUD Script] Erro ao parsear JSON da API de Redes:", e);
+                            suggestionsBox.innerHTML = '<div class="hud-suggestion-item loading">Erro ao carregar redes.</div>';
+                        }
+                    },
+                    onerror: function(error) {
+                        console.error("[HUD Script] Erro de rede na API de Redes:", error);
+                        suggestionsBox.innerHTML = '<div class="hud-suggestion-item loading">Erro de rede.</div>';
+                    }
+                });
+            };
+            const debouncedRedeSearch = debounce(handleRedeSearch, 300);
+            redeInput.addEventListener('keyup', debouncedRedeSearch);
+            newPanel.addEventListener('click', (e) => {
+                if (!redeInputGroup.contains(e.target)) {
+                    suggestionsBox.style.display = 'none';
+                }
+            });
+            // --- FIM DO AUTOCOMPLETE ---
+
+            // 8. Adiciona lógica ao botão 'Cancelar'
+            newPanel.querySelector('#hud-cadastro-cancelar').addEventListener('click', () => {
+                newPanel.remove();
+                state.cadastroEquipamentoAtivo = false;
+            });
+
+            // 9. Adiciona lógica ao botão 'Tela Padrão' (Fallback)
+            newPanel.querySelector('#hud-cadastro-padrao').addEventListener('click', () => {
+                console.log('[HUD Script] "Tela Padrão" clicado. Acionando fallback.');
+                state.cadastroEquipamentoFallback = true;
+                newPanel.remove();
+                state.cadastroEquipamentoAtivo = false;
+                addButton.click();
+            });
+
+            // --- (INÍCIO DA LÓGICA DO 'CONFIRMAR' REFATORADA) ---
+
+            // (NOVA FUNÇÃO HELPER) Encontra o próximo sufixo (ex: " - B")
+            function findNextSigla(baseSigla, keywords, existingList) {
+                const normalizedKeywords = keywords.map(k => k.toLowerCase());
+
+                // 1. Filtra a lista principal para encontrar APENAS equipamentos do mesmo tipo
+                const matchingEquipments = existingList.filter(eq => {
+                    const normalizedSigla = eq.sigla.toLowerCase();
+                    // Verifica se a sigla contém QUALQUER uma das keywords
+                    // ex: keywords ['cliente', 'cl.']
+                    return normalizedKeywords.some(keyword => normalizedSigla.includes(keyword));
+                });
+
+                const suffixes = ["", " - A", " - B", " - C", " - D"];
+                const usedSuffixes = new Set();
+
+                // 2. Verifica quais sufixos já estão em uso
+                for (const eq of matchingEquipments) {
+                    const normalizedSigla = eq.sigla.toUpperCase();
+                    // Itera de trás para frente (de " - D" para " - A")
+                    for (let i = suffixes.length - 1; i > 0; i--) {
+                        const suffix = suffixes[i].toUpperCase();
+                        if (normalizedSigla.endsWith(suffix)) {
+                            usedSuffixes.add(suffix);
+                            break; // Encontrou o sufixo, vai para o próximo equipamento
+                        }
+                    }
+                }
+
+                // 3. Encontra o primeiro sufixo vago
+                // Começa verificando a base (sem sufixo)
+                const baseSiglaExists = matchingEquipments.some(eq =>
+                    !eq.sigla.toUpperCase().includes(" - A") &&
+                    !eq.sigla.toUpperCase().includes(" - B") &&
+                    !eq.sigla.toUpperCase().includes(" - C") &&
+                    !eq.sigla.toUpperCase().includes(" - D")
+                );
+
+                if (!baseSiglaExists) {
+                    return baseSigla; // Slot base ("") está vago
+                }
+
+                // Se a base está ocupada, procura por A, B, C, D
+                for (let i = 1; i < suffixes.length; i++) {
+                    const suffix = suffixes[i].toUpperCase();
+                    if (!usedSuffixes.has(suffix)) {
+                        return baseSigla + suffixes[i]; // ex: "spl cl. 0000 - A"
+                    }
+                }
+
+                return null; // Limite (A, B, C, D) atingido
+            }
+
+
+
+            // 10. (REFATORADO) Lógica do botão 'Confirmar'
+            newPanel.querySelector('#hud-cadastro-confirmar').addEventListener('click', async () => {
+                const btnConfirmar = newPanel.querySelector('#hud-cadastro-confirmar');
+                const btnCancelar = newPanel.querySelector('#hud-cadastro-cancelar');
+                const btnPadrao = newPanel.querySelector('#hud-cadastro-padrao');
+
+                const botoesAtivosNodeList = newPanel.querySelectorAll('.hud-toggle-btn.active');
+                const botoesAtivos = Array.from(botoesAtivosNodeList);
+
+                const nomeRedeInput = newPanel.querySelector('#hud-cadastro-rede');
+                const nome_rede_valor = nomeRedeInput.value.trim();
+                const rede_id_valor = nomeRedeInput.dataset.redeId || '';
+
+                const siglasEquipamentosCriados = []; // Para splitters
+                let siglaPonteCriada = null; // Para a ponte
+
+                // --- Verificações Iniciais ---
+                if (botoesAtivos.length === 0) {
+                    showHudToast('Nenhum equipamento selecionado.');
+                    return;
+                }
+                if (!ultimoCodigoEquipamentoPai) {
+                    showHudToast('Erro: Código do equipamento pai (ex: TA...) não foi capturado.');
+                    return;
+                }
+                if (!ultimoCodigoPoste) {
+                    showHudToast('Erro: Código numérico do poste (ex: 55325) não foi capturado.');
+                    return;
+                }
+
+                // --- Validação de Rede Robusta ---
+                const tiposSelecionados = botoesAtivos.map(btn => btn.dataset.value);
+                const isCriandoSplCliente = tiposSelecionados.includes('1x8_cliente');
+                const isCriandoExpansao = tiposSelecionados.includes('1x8_expansao'); // Corrigido
+                const isCriandoRede1x2 = tiposSelecionados.includes('rede_1x2');
+
+                if (isCriandoSplCliente && !rede_id_valor) {
+                    showHudToast('Para "Cliente", você DEVE pesquisar e selecionar uma rede da lista.');
+                    return;
+                }
+                if ((isCriandoExpansao || isCriandoRede1x2) && !nome_rede_valor) {
+                    showHudToast('O campo "Rede" é obrigatório para Expansão ou 1x2 Rede.');
+                    return;
+                }
+
+                // Bloqueia botões
+                btnConfirmar.disabled = true;
+                btnCancelar.disabled = true;
+                btnPadrao.disabled = true;
+
+                try {
+                    // --- ETAPA 1: VERIFICAR EQUIPAMENTOS EXISTENTES ---
+                    btnConfirmar.textContent = '1/5 Verificando...';
+                    console.log(`[HUD Script] Iniciando Etapa 1: Verificando equipamentos existentes...`);
+
+                    const payloadVerificar = new URLSearchParams();
+                    payloadVerificar.append('controlador', 'diagrama');
+                    payloadVerificar.append('metodo', 'carregarCabosEquipamentos');
+                    payloadVerificar.append('codigo', ultimoCodigoEquipamentoPai);
+                    payloadVerificar.append('idRazaoSocial', '46');
+
+                    const resultadoVerificar = await fazerRequisicaoDaPagina(
+                        "http://172.16.6.57/geogrid/aconcagua/php/diagramaJson/api.php",
+                        payloadVerificar.toString(),
+                        "Verificar Equipamentos"
+                    );
+
+                    const dataVerificar = JSON.parse(resultadoVerificar.response);
+                    const existingEquipments = dataVerificar.equipamentos || [];
+                    const existingCabos = dataVerificar.cabosJson || [];
+
+                    console.log(`[HUD Script] Verificação concluída. Encontrados ${existingEquipments.length} equipamentos e ${existingCabos.length} cabos.`);
+
+                    // --- ETAPA 2: CONSTRUIR PAYLOADS E VALIDAR ---
+                    btnConfirmar.textContent = '2/5 Preparando...';
+                    const payloadsParaSalvar = [];
+                    const isCriandoPonte = tiposSelecionados.includes('ponte');
+
+                    // --- 2A. Lógica da Ponte ---
+                    if (isCriandoPonte) {
+                        console.log(`[HUD Script] Validando Ponte...`);
+
+                        const ponteExistente = existingCabos.some(c => c.sigla && c.sigla.toLowerCase().includes('ponte'));
+                        if (ponteExistente) {
+                            showHudToast("Já existe uma ponte neste poste. Crie da forma antiga.");
+                            throw new Error("Já existe uma ponte.");
+                        }
+
+                        const payloadValidacao = new URLSearchParams();
+                        payloadValidacao.append('idRazaoSocial', '46');
+                        payloadValidacao.append('poste', `PT${ultimoCodigoPoste}`);
+
+                        const resultadoValidacao = await fazerRequisicaoDaPagina(
+                            "http://172.16.6.57/geogrid/aconcagua/php/acessorios/carregaAcessoriosPoste.php",
+                            payloadValidacao.toString(), "Validação da Ponte"
+                        );
+                        const dataValidacao = JSON.parse(resultadoValidacao.response);
+                        const dados = dataValidacao.dados;
+
+                        const pontaA_CE = dados?.find(d => d.cd.startsWith('CE'));
+                        const pontaB_TA = dados?.find(d => d.cd.startsWith('TA'));
+
+                        if (dados?.length !== 2 || !pontaA_CE || !pontaB_TA) {
+                            showHudToast('Caixa incompatível pra criação da Ponte, crie da forma antiga');
+                            throw new Error("Validação da Ponte falhou.");
+                        }
+
+                        const siglaPonte = `ponte ${ultimoCodigoPoste}`;
+                        const payloadCriacaoPonte = new URLSearchParams();
+                        payloadCriacaoPonte.append('codigo', siglaPonte);
+                        payloadCriacaoPonte.append('dataDeInstalacao', getTodayDate());
+                        payloadCriacaoPonte.append('tipo_cabo', '12 Fibras AS 120');
+                        payloadCriacaoPonte.append('ponta_a', '0');
+                        payloadCriacaoPonte.append('ponta_b', '1');
+                        payloadCriacaoPonte.append('obs', '');
+                        payloadCriacaoPonte.append('idRazaoSocial', '46');
+                        payloadCriacaoPonte.append('codigoEmpresa', 'JPT');
+                        payloadCriacaoPonte.append('poste', `PT${ultimoCodigoPoste}`);
+                        payloadCriacaoPonte.append('sigla', siglaPonte);
+                        payloadCriacaoPonte.append('pontaA', pontaA_CE.cd);
+                        payloadCriacaoPonte.append('pontaB', pontaB_TA.cd);
+
+                        payloadsParaSalvar.push({
+                            url: "http://172.16.6.57/geogrid/aconcagua/php/cabos/cadastraCaboLigacao.php",
+                            payload: payloadCriacaoPonte.toString(),
+                            sigla: siglaPonte,
+                            isPonte: true
+                        });
+                        siglaPonteCriada = siglaPonte;
+                    }
+
+                    // --- 2B. Lógica dos Splitters ---
+                    const otherEquipments = botoesAtivos.filter(btn => btn.dataset.value !== 'ponte');
+
+                    for (const btn of otherEquipments) {
+                        const tipo = btn.dataset.value;
+                        const textoBotao = btn.textContent.trim();
+
+                        let id_equipamento = '157';
+                        let baseSigla = '';
+                        let extensao = 'true';
+                        let payload_rede_id = '';
+                        let payload_nome_rede = '';
+                        let keywords = [];
+
+                        if (tipo.startsWith('1x8_')) {
+                            id_equipamento = '159';
+                            if (tipo === '1x8_cliente') {
+                                baseSigla = `spl cl. ${ultimoCodigoPoste}`;
+                                extensao = 'false';
+                                payload_rede_id = rede_id_valor;
+                                payload_nome_rede = nome_rede_valor;
+                                keywords = ['cliente', 'cl.'];
+                            } else { // 1x8_expansao (corrigido)
+                                baseSigla = `spl exp. ${nome_rede_valor.toUpperCase()}`;
+                                keywords = ['expansão', 'expansao', 'exp.'];
+                            }
+                        } else if (tipo.startsWith('1x2_')) {
+                            id_equipamento = '157';
+                            baseSigla = `spl ${textoBotao} ${ultimoCodigoPoste}`;
+                            keywords = [textoBotao]; // ex: "10/90"
+                        } else if (tipo === 'rede_1x2') {
+                            id_equipamento = '157';
+                            baseSigla = `1/2 ${nome_rede_valor.toUpperCase()}`;
+                            keywords = ['1/2'];
+                        }
+
+                        // Encontra o próximo sufixo vago
+                        const siglaFinal = findNextSigla(baseSigla, keywords, existingEquipments);
+
+                        if (!siglaFinal) {
+                            showHudToast(`Limite de 5 (A-D) atingido para ${baseSigla}`);
+                            throw new Error("Limite de equipamento atingido.");
+                        }
+
+                        const payload = new URLSearchParams();
+                        payload.append('codigo', ultimoCodigoEquipamentoPai);
+                        payload.append('idRazaoSocial', '46');
+                        payload.append('ip', '');
+                        payload.append('obs', '');
+                        payload.append('razaoSocial', 'Jupiter Telecomunicações');
+                        payload.append('nomeUsuario', 'jhonvictor');
+                        payload.append('codigoEmpresa', 'JPT');
+                        payload.append('projeto', 'false');
+                        payload.append('id_equipamento', id_equipamento);
+                        payload.append('extensao', extensao);
+                        payload.append('rede', payload_rede_id);
+                        payload.append('nome_rede', payload_nome_rede);
+                        payload.append('sigla', siglaFinal); // Usa a sigla final com sufixo
+
+                        payloadsParaSalvar.push({
+                            url: "http://172.16.6.57/geogrid/aconcagua/php/diagramaJson/salvaEquipamentos.php",
+                            payload: payload.toString(),
+                            sigla: siglaFinal,
+                            isPonte: false
+                        });
+                        siglasEquipamentosCriados.push(siglaFinal);
+                    }
+
+                    // --- ETAPA 3: Loop SEQUENCIAL para salvar ---
+                    btnConfirmar.textContent = '3/5 Salvando...';
+                    console.log(`[HUD Script] Iniciando Etapa 3: Salvar ${payloadsParaSalvar.length} itens...`);
+
+                    for (const item of payloadsParaSalvar) {
+                        console.log(`[HUD Script] Salvando item: ${item.sigla}...`);
+                        await fazerRequisicaoDaPagina(item.url, item.payload, item.sigla);
+                        console.log(`[HUD Script] Sucesso: ${item.sigla}`);
+                    }
+                    console.log('[HUD Script] Etapa 3 (Salvar) concluída com sucesso.');
+
+                    // --- ETAPA 4: Recarrega o diagrama (CHAMADA ÚNICA) ---
+                    btnConfirmar.textContent = '4/5 Recarregando...';
+
+                    const payloadRecarregar = new URLSearchParams();
+                    payloadRecarregar.append('controlador', 'diagrama');
+                    payloadRecarregar.append('metodo', 'carregarCabosEquipamentos');
+                    payloadRecarregar.append('codigo', ultimoCodigoEquipamentoPai);
+                    payloadRecarregar.append('idRazaoSocial', '46');
+
+                    const resultadoRecarga = await fazerRequisicaoDaPagina(
+                        "http://172.16.6.57/geogrid/aconcagua/php/diagramaJson/api.php",
+                        payloadRecarregar.toString(),
+                        "carregarCabosEquipamentos"
+                    );
+
+                    const dataRecarga = JSON.parse(resultadoRecarga.response);
+                    if (!dataRecarga) {
+                        throw new Error('Falha na Etapa 4: Resposta de carregarCabosEquipamentos inválida.');
+                    }
+
+                    // --- ETAPA 5: Chama as recargas FINAIS (em paralelo) ---
+                    btnConfirmar.textContent = '5/5 Carregando portas...';
+
+                    // Encontra os itens recém-criados
+                    const equipamentosRecemCriados = dataRecarga.equipamentos?.filter(eq => siglasEquipamentosCriados.includes(eq.sigla)) || [];
+                    const cabosRecemCriados = dataRecarga.cabosJson?.filter(cabo => cabo.sigla === siglaPonteCriada) || [];
+
+                    console.log(`[HUD Script] Etapa 4 concluída. ${equipamentosRecemCriados.length} equipamentos e ${cabosRecemCriados.length} pontes identificados.`);
+
+                    const promessasDeCargaFinal = [];
+                    const ponta = ultimoCodigoEquipamentoPai.startsWith('TA') ? 'B' : 'A';
+                    const gw = (typeof unsafeWindow !== 'undefined' ? unsafeWindow : window);
+
+                    // Loop 1: Carrega os SPLITTERS
+                    for (const eq of equipamentosRecemCriados) {
+                        const novoCodigoEquipamento = eq.codigo; // ex: JPT_DIV75964
+
+                        const payloadApi = new URLSearchParams();
+                        payloadApi.append('controlador', 'fichaEquipamento');
+                        payloadApi.append('metodo', 'carregarEquipamento');
+                        payloadApi.append('codigo', novoCodigoEquipamento);
+                        payloadApi.append('idRazaoSocial', '46');
+                        promessasDeCargaFinal.push(fazerRequisicaoDaPagina(
+                            "http://172.16.6.57/geogrid/aconcagua/php/diagramaJson/api.php",
+                            payloadApi.toString(), `carregarEquipamento ${novoCodigoEquipamento}`
+                        ));
+
+                        const payloadPortas = new URLSearchParams();
+                        payloadPortas.append('idRazaoSocial', '46');
+                        payloadPortas.append('codigo', novoCodigoEquipamento);
+                        payloadPortas.append('codigoPosteRecipiente', ultimoCodigoEquipamentoPai);
+                        promessasDeCargaFinal.push(fazerRequisicaoDaPagina(
+                            "http://172.16.6.57/geogrid/aconcagua/php/diagramaJson/carregarPortas.php",
+                            payloadPortas.toString(), `carregarPortas ${novoCodigoEquipamento}`
+                        ));
+                    }
+
+                    // Loop 2: Carrega a PONTE
+                    for (const cabo of cabosRecemCriados) {
+                        const novoCodigoCabo = cabo.codigo; // ex: JPT54321
+
+                        const payloadApiCabo = new URLSearchParams();
+                        payloadApiCabo.append('controlador', 'cabos');
+                        payloadApiCabo.append('metodo', 'carregarCabo');
+                        payloadApiCabo.append('codigo', novoCodigoCabo);
+                        payloadApiCabo.append('idRazaoSocial', '46');
+                        payloadApiCabo.append('codigoPosteRecipiente', ultimoCodigoEquipamentoPai);
+                        payloadApiCabo.append('ponta', ponta);
+                        payloadApiCabo.append('caboDeLigacao', 'true');
+                        promessasDeCargaFinal.push(fazerRequisicaoDaPagina(
+                            "http://172.16.6.57/geogrid/aconcagua/php/diagramaJson/api.php",
+                            payloadApiCabo.toString(), `carregarCabo ${novoCodigoCabo}`
+                        ));
+
+                        const payloadFibras = new URLSearchParams();
+                        payloadFibras.append('idRazaoSocial', '46');
+                        payloadFibras.append('codigoCabo', novoCodigoCabo);
+                        payloadFibras.append('codigoPosteRecipiente', ultimoCodigoEquipamentoPai);
+                        payloadFibras.append('ponta', ponta);
+                        payloadFibras.append('caboDeLigacao', 'true');
+                        promessasDeCargaFinal.push(fazerRequisicaoDaPagina(
+                            "http://172.16.6.57/geogrid/aconcagua/php/diagramaJson/carregarFibras.php",
+                            payloadFibras.toString(), `carregarFibras ${novoCodigoCabo}`
+                        ));
+                    }
+
+                    await Promise.all(promessasDeCargaFinal);
+                    console.log('[HUD Script] Etapa 5 (carregarEquipamento/carregarPortas/Fibras) concluídas.');
+
+                    // --- ETAPA 6: Recarrega a UI (AbreDiagrama) e clica ---
+                    btnConfirmar.textContent = 'Recarregando UI...';
+
+                    if (gw && typeof gw.abreDiagrama === 'function') {
+                        console.log(`[HUD Script] Chamando a função de recarregamento global: gw.abreDiagrama(${ultimoCodigoEquipamentoPai}, '46')`);
+                        await gw.abreDiagrama(ultimoCodigoEquipamentoPai, '46');
+                        console.log('[HUD Script] Recarregamento pela função "abreDiagrama" concluído.');
+
+                        btnConfirmar.textContent = 'Finalizando...';
+                        const delayMs = 500;
+                        console.log(`[HUD Script] Aguardando ${delayMs}ms para a UI renderizar...`);
+                        await new Promise(resolve => setTimeout(resolve, delayMs));
+
+                        console.log('[HUD Script] Procurando e clicando no botão ".button.botao-inserir-todos" via jQuery');
+                        const botaoInserirTodos = gw.jQuery('.button.botao-inserir-todos');
+
+                        if (botaoInserirTodos.length > 0) {
+                            if (!botaoInserirTodos.is(':disabled')) {
+                                botaoInserirTodos.click();
+                                console.log('[HUD Script] Botão "Inserir Todos" clicado com sucesso (via jQuery).');
+                            } else {
+                                console.warn('[HUD Script] Botão "Inserir Todos" encontrado, mas estava DESABILITADO. O clique foi pulado.');
+                            }
+                        } else {
+                            console.warn('[HUD Script] Botão ".button.botao-inserir-todos" NÃO foi encontrado pelo jQuery. A etapa foi pulada.');
+                        }
+
+                        // Fecha o painel
+                        newPanel.remove();
+                        state.cadastroEquipamentoAtivo = false;
+
+                    } else {
+                        throw new Error("Função de recarregamento (abreDiagrama) não encontrada na página (window.abreDiagrama). A UI não será atualizada. Por favor, feche e abra o poste.");
+                    }
+
+                } catch (e) {
+                    console.error('[HUD Script] Erro na cadeia de confirmação:', e.message || e);
+                    showHudToast(`Ocorreu um erro: ${e.message || e}`);
+
+                    btnConfirmar.disabled = false;
+                    btnCancelar.disabled = false;
+                    btnPadrao.disabled = false;
+                    btnConfirmar.textContent = 'Confirmar';
+                }
+            });
+
+        }, true); // Usa a fase de captura
+    }
+
     // --- INICIAÇÃO (FINAL) ---
-    // (A tua inicialização existente)
+    injetarEstilosGlobais();
     iniciarListenerDeColarCoordenadas();
     iniciarInterceptadorXHR();
 
@@ -1867,5 +2804,8 @@ function iniciarListenerDeColarCoordenadas() {
     // (NOVO) Inicia o listener de busca por poste
     iniciarListenerDeBuscaPoste();
     iniciarListenerDePesquisaRapida();
+
+    // Listener da tela de Equipamentos
+    iniciarListenerAdicionarEquipamento();
 
 })();
