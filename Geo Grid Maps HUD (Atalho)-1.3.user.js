@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Geogrid Tools
 // @namespace    http://tampermonkey.net/
-// @version      2.6
+// @version      2.7
 // @description  Adiciona um HUD com informações de clientes e atalhos no Geo Grid, ativado pela tecla "+" do Numpad.
 // @author       Jhon
 // @match        http://172.16.6.57/geogrid/aconcagua/*
@@ -690,7 +690,6 @@
         }
     }
 
-    // Substitua a sua função createDraggablePanel por esta
     function createDraggablePanel(id, title, contentElement, position) {
         const panel = document.createElement("div");
         panel.id = id;
@@ -706,16 +705,60 @@
         header.className = "hud-header";
         header.innerHTML = `<strong>${title}</strong>`;
 
+        // --- (INÍCIO DA MODIFICAÇÃO) ---
+        // Se for o painel de Configurações, adiciona um botão Salvar
+        if (id === 'blocoPredefinicoesHUD') {
+            const saveBtn = document.createElement("button");
+            saveBtn.className = 'hud-btn'; // Reutiliza a classe de botão
+            saveBtn.title = 'Salvar Configurações Manualmente';
+            saveBtn.innerHTML = 'Salvar';
+
+            // Estilo para o botão de texto (para caber "Salvar")
+            Object.assign(saveBtn.style, {
+                width: 'auto',      // Largura automática
+                padding: '4px 8px', // Espaçamento interno
+                height: '30px',     // Altura padrão
+                marginLeft: 'auto'  // Joga ele para a direita (antes do 'X')
+            });
+
+            // Adiciona a função de salvar
+            saveBtn.onclick = () => {
+                try {
+                    saveSettings(); // Chama a função que já usamos!
+                    // Feedback visual
+                    saveBtn.innerHTML = 'Salvo ✅';
+                    saveBtn.style.color = 'var(--hud-green)';
+                    setTimeout(() => {
+                        saveBtn.innerHTML = 'Salvar';
+                        saveBtn.style.color = 'var(--hud-text)';
+                    }, 2000);
+                } catch (e) {
+                    saveBtn.innerHTML = 'Erro!';
+                    saveBtn.style.color = 'var(--hud-red)';
+                    console.error("[HUD Script] Erro ao salvar configurações manualmente:", e);
+                }
+            };
+            header.appendChild(saveBtn);
+        }
+        // --- (FIM DA MODIFICAÇÃO) ---
+
         const closeBtn = document.createElement("button");
         closeBtn.className = "hud-btn-close";
         closeBtn.innerHTML = "×";
-        closeBtn.style.marginLeft = "auto";
+
+        // (MODIFICADO) Ajusta a margem do botão 'X'
+        // Se for o painel de config, damos uma margem pequena; senão, 'auto'
+        if (id === 'blocoPredefinicoesHUD') {
+            closeBtn.style.marginLeft = "4px";
+        } else {
+            closeBtn.style.marginLeft = "auto";
+        }
+
         closeBtn.onclick = () => {
             panel.remove();
-            // (BLOCO MODIFICADO)
             if (id === 'blocoNotasHUD') state.notasAtivo = false;
             if (id === 'blocoPredefinicoesHUD') state.configAtivo = false;
-            if (id === 'hudAdicionarEquipamento') state.cadastroEquipamentoAtivo = false; // <-- LINHA ADICIONADA
+            if (id === 'hudAdicionarEquipamento') state.cadastroEquipamentoAtivo = false;
         };
         header.appendChild(closeBtn);
         panel.appendChild(header);
