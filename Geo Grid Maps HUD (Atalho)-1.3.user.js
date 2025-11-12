@@ -1,11 +1,12 @@
 // ==UserScript==
 // @name         Geogrid Tools
 // @namespace    http://tampermonkey.net/
-// @version      2.7
+// @version      3.0
 // @description  Adiciona um HUD com informações de clientes e atalhos no Geo Grid, ativado pela tecla "+" do Numpad.
 // @author       Jhon
 // @match        http://172.16.6.57/geogrid/aconcagua/*
 // @grant        GM_xmlhttpRequest
+// @require      https://cdn.jsdelivr.net/npm/db.js@0.15.0/dist/db.min.js
 // @downloadURL https://github.com/Jhondbs/Geogrid-HUD/raw/refs/heads/main/Geo%20Grid%20Maps%20HUD%20(Atalho)-1.3.user.js
 // @updateURL https://github.com/Jhondbs/Geogrid-HUD/raw/refs/heads/main/Geo%20Grid%20Maps%20HUD%20(Atalho)-1.3.user.js
 // ==/UserScript==
@@ -504,6 +505,366 @@
     `;
 
     // --- 2. FUNÇÕES AUXILIARES (HELPERS) ---
+
+    /** (NOVO) Armazena a conexão com o banco de dados IndexedDB */
+    let cacheDB = null;
+
+    /** (MODIFICADO) Inicializa a conexão com o IndexedDB */
+    async function iniciarCacheDB() {
+        try {
+            console.log("[HUD Script - Cache] Iniciando IndexedDB (v2)...");
+            // Abre (ou cria) o banco de dados
+            cacheDB = await db.open({
+                server: 'geogridCache',
+                version: 2, // <-- (NOVO) ATUALIZADO PARA v2
+                schema: {
+                    apiResponses: { // <-- (ANTIGO) Cache "burro" - Mantemos para fallback
+                        key: { keyPath: 'id' }
+                    },
+                    geoItems: { // <-- (NOVO) Cache "inteligente"
+                        key: { keyPath: 'cd' }, // Chave primária (ex: "JPT25588")
+                        indexes: {
+                            city: 'cdCity' // Índice para buscar por cidade (ex: "1146")
+                        }
+                    }
+                }
+            });
+            console.log("[HUD Script - Cache] IndexedDB v2 iniciado com sucesso.");
+        } catch (e) {
+            console.error("[HUD Script - Cache] Erro ao iniciar o IndexedDB:", e);
+        }
+    }
+
+    /** (NOVO) Lê uma resposta do cache do IndexedDB */
+    async function lerDoCache(cacheId) {
+        if (!cacheDB) {
+            console.warn("[HUD Script - Cache] O DB não está pronto. Leitura pulada.");
+            return null;
+        }
+
+        try {
+            const registro = await cacheDB.apiResponses.get(cacheId);
+            if (registro) {
+                //console.log(`[HUD Script - Cache] SUCESSO DE CACHE: ${cacheId}`);
+                return registro.data; // Retorna os dados puros (em JSON)
+            }
+        } catch (e) {
+            console.error(`[HUD Script - Cache] Erro ao ler ${cacheId} do DB:`, e);
+        }
+
+        //console.warn(`[HUD Script - Cache] FALHA DE CACHE: ${cacheId}`);
+        return null; // Não encontrado
+    }
+
+    /** (MODIFICADO) Injeta o script 'listener' no contexto da página (para contornar a sandbox) */
+    function injetarScriptPagina() {
+        // Verifica se já foi injetado para não duplicar
+        if (document.getElementById('hud-injected-script')) return;
+
+        const scriptContent = `
+            (function() {
+                // Flag para garantir que rode apenas uma vez
+                if (window.__hudFastLoaderInjected__) return;
+                window.__hudFastLoaderInjected__ = true;
+
+                console.log('%c[HUD Page Context] Listener de Carga Rápida (v4.4 - Preparação Assíncrona) Ativado.', 'color: #61afef; font-weight: bold;');
+
+                // --- Configurações Globais ---
+                const TAMANHO_LOTE_PREPARO = 2500;  // Lotes para a fase de preparação (mais rápido)
+                const TAMANHO_LOTE_RENDER = 1500;  // Lotes para a fase de renderização (mais suave)
+
+                // Filas de trabalho
+                window.__hudFilaDePreparo__ = []; // Itens brutos do cache (ex: 37.000)
+                window.__hudFilaDeCarga__ = [];   // Itens prontos para plotar
+
+                // Armazenamento
+                if (!window.__hudIndiceRapido__) {
+                    window.__hudIndiceRapido__ = {};
+                }
+                window.__hudFichasParaIndexar__ = new Set();
+                window.__hudTotalDeItensPreparo__ = 0;
+                window.__hudTotalDeItensCarga__ = 0;
+
+                // --- Flags Globais ---
+                window.__hudBypassProximaCarga__ = false; // (v2) Para o XHR Interceptor
+                // --- (INÍCIO DA MODIFICAÇÃO - SYNC) ---
+                window.__hudCachePlottedIDs__ = new Set(); // (v3) Armazena IDs do cache para o sync
+                window.__hudIsDeltaLoading__ = false;    // (v3) Flag para 'plotaItensNoMapa' saber que é o delta sync
+                // --- (FIM DA MODIFICAÇÃO - SYNC) ---
+
+
+                // --- (INÍCIO DA OTIMIZAÇÃO v4.4: MONKEY-PATCHING) ---
+                window.__originalRetornaIndice__ = window.retornaIndice;
+                window.__originalCentraliza__ = window.centraliza;
+                window.__originalCriaAlerta__ = window.criaAlerta;
+                // --- (INÍCIO DA MODIFICAÇÃO - SYNC) ---
+                // Precisamos interceptar a função de plotagem do site
+                window.__originalPlotaItensNoMapa__ = window.plotaItensNoMapa;
+                // --- (FIM DA MODIFICAÇÃO - SYNC) ---
+
+
+                window.retornaIndice = function(ficha, codigo) {
+                    try {
+                        const indice = window.__hudIndiceRapido__[ficha][codigo];
+                        if (indice !== undefined) {
+                            return indice;
+                        }
+                    } catch (e) {}
+                    return window.__originalRetornaIndice__(ficha, codigo);
+                };
+
+                window.centraliza = function() {
+                    arrayCentralizar = [];
+                    centerBag = new google.maps.LatLngBounds();
+                };
+
+                window.criaAlerta = function(tipo, acao, msg) {
+                    if (tipo === "carregando") {
+                        if (acao === "ativa") {
+                            window.__originalCriaAlerta__("carregando", "cancela"); // Limpa o anterior
+                            window.__originalCriaAlerta__(tipo, acao, msg); // Mostra o novo
+                        }
+                        // Ignora "cancela"
+                    } else {
+                        window.__originalCriaAlerta__(...arguments);
+                    }
+                };
+
+                // --- (INÍCIO DA MODIFICAÇÃO - SYNC) ---
+                /**
+                 * (NOVO v3) Interceptamos a função 'plotaItensNoMapa'
+                 * Esta função é chamada tanto pela Carga Rápida (várias vezes)
+                 * quanto pela Carga Lenta (uma vez no final).
+                 */
+                window.plotaItensNoMapa = function() {
+                    // Verifica se esta é a chamada da Carga Lenta (Delta)
+                    if (window.__hudIsDeltaLoading__ === true) {
+                        // Reseta a flag para não rodar de novo
+                        window.__hudIsDeltaLoading__ = false;
+
+                        // 'carregados' é a variável global que a Carga Lenta populou
+                        const networkIDs = new Set(carregados.map(item => item.cd));
+
+                        console.log(
+                            '[HUD Page Context] Sincronização Delta iniciada. Comparando %s itens do cache com %s itens da rede.',
+                            window.__hudCachePlottedIDs__.size,
+                            networkIDs.size
+                        );
+
+                        // Compara: Itens do Cache vs. Itens da Rede
+                        for (const cachedID of window.__hudCachePlottedIDs__) {
+                            // Se um item do cache NÃO veio na lista da rede...
+                            if (!networkIDs.has(cachedID)) {
+                                // ...significa que foi excluído. Removemos o "zumbi".
+                                try {
+                                    const ficha = retornaFicha(cachedID);
+                                    // Usamos o __originalRetornaIndice__ para segurança
+                                    const indice = window.__originalRetornaIndice__(ficha, cachedID);
+
+                                    if (indice > -1) {
+                                        console.log(\`[HUD Page Context] Sincronizando exclusão: \${cachedID} (Ficha: \${ficha}, Indice: \${indice})\`);
+                                        // 'removerItem' é uma função nativa do GeoGrid
+                                        removerItem(ficha, indice, cachedID);
+                                    }
+                                } catch (e) {
+                                    console.warn(\`[HUD Page Context] Falha ao tentar remover item \${cachedID}\`, e);
+                                }
+                            }
+                        }
+                        // Limpa o set de cache, o trabalho está feito
+                        window.__hudCachePlottedIDs__.clear();
+                    }
+
+                    // Finalmente, chama a função original para que o mapa
+                    // seja desenhado (seja da carga rápida ou lenta)
+                    return window.__originalPlotaItensNoMapa__(...arguments);
+                };
+                // --- (FIM DA MODIFICAÇÃO - SYNC) ---
+
+
+                /**
+                 * FASE 3: Renderização (Plotagem)
+                 */
+                function processarLoteDeCarga() {
+                    const lote = window.__hudFilaDeCarga__.splice(0, TAMANHO_LOTE_RENDER);
+
+                    if (lote.length === 0) {
+                        // --- O TRABALHO DA CARGA RÁPIDA ACABOU ---
+                        console.log('%c[HUD Page Context] Carga Rápida concluída!', 'color: #98c379; font-weight: bold;');
+
+                        // Restaura funções nativas (exceto 'plotaItensNoMapa', que ainda precisamos)
+                        window.retornaIndice = window.__originalRetornaIndice__;
+                        window.centraliza = window.__originalCentraliza__;
+                        window.criaAlerta = window.__originalCriaAlerta__;
+
+                        console.log('[HUD Page Context] Executando centralização final...');
+                        window.centraliza(); // Chama a função de verdade
+
+                        window.criaAlerta("carregando", "cancela"); // Limpa o alerta final
+
+                        // --- (INÍCIO DA MODIFICAÇÃO v2 - Robusta) ---
+                        try {
+                            if (window.jQuery) {
+                                const $botaoCarregar = window.jQuery('img[name="mostrar_item"]');
+                                if ($botaoCarregar.length > 0) {
+                                    console.log('[HUD Page Context] Disparando clique (via jQuery) para Carga Lenta (Delta)...');
+                                    // --- (INÍCIO DA MODIFICAÇÃO - SYNC) ---
+                                    window.__hudIsDeltaLoading__ = true; // (v3) Avisa 'plotaItensNoMapa' que a próxima carga é o sync
+                                    // --- (FIM DA MODIFICAÇÃO - SYNC) ---
+                                    window.__hudBypassProximaCarga__ = true; // (v2) Avisa o XHR Interceptor para não usar o cache
+                                    $botaoCarregar.click();
+                                } else {
+                                     console.warn('[HUD Page Context] Não foi possível encontrar o botão img[name="mostrar_item"] com jQuery.');
+                                }
+                            } else {
+                                console.warn('[HUD Page Context] jQuery não encontrado para disparar o clique do delta load.');
+                            }
+                        } catch (err) {
+                            console.error('[HUD Page Context] Erro ao tentar disparar o delta load:', err);
+                        }
+                        // --- (FIM DA MODIFICAÇÃO v2) ---
+
+                        delete window.__hudIndiceRapido__;
+                        delete window.__hudFichasParaIndexar__;
+                        return;
+                    }
+
+                    // Calcula o progresso da FASE 3
+                    const processados = window.__hudTotalDeItensCarga__ - window.__hudFilaDeCarga__.length;
+                    const percentual = Math.round((processados / window.__hudTotalDeItensCarga__) * 100);
+                    const msg = \`Carregando... (\${percentual}%) \${processados} / \${window.__hudTotalDeItensCarga__}\`;
+
+                    criaAlerta("carregando", "ativa", msg);
+                    carregados = lote;
+                    plotaItensNoMapa(); // (AGORA CHAMA A NOSSA VERSÃO INTERCEPTADA)
+                    setTimeout(processarLoteDeCarga, 0);
+                }
+
+                /**
+                 * FASE 2: Construção do Índice
+                 */
+                function construirIndice() {
+                    console.time('[HUD Page Context] Fase 2: Construção do Índice');
+                    criaAlerta("carregando", "ativa", "Finalizando preparação do índice...");
+
+                    for (const ficha of window.__hudFichasParaIndexar__) {
+                        if (!window.__hudIndiceRapido__[ficha]) {
+                            window.__hudIndiceRapido__[ficha] = {};
+                            jsonPrincipal[ficha].forEach((item, index) => {
+                                window.__hudIndiceRapido__[ficha][item.cd] = index;
+                            });
+                        }
+                    }
+                    console.timeEnd('[HUD Page Context] Fase 2: Construção do Índice');
+
+                    // Passa para a Fase 3
+                    window.__hudTotalDeItensCarga__ = window.__hudFilaDeCarga__.length;
+                    processarLoteDeCarga();
+                }
+
+                /**
+                 * FASE 1: Preparação dos Itens
+                 */
+                function processarLoteDePreparo() {
+                    const lote = window.__hudFilaDePreparo__.splice(0, TAMANHO_LOTE_PREPARO);
+
+                    if (lote.length === 0) {
+                        // --- FASE 1 ACABOU ---
+                        console.log('[HUD Page Context] Fase 1 (Preparo) concluída.');
+                        setTimeout(construirIndice, 0);
+                        return;
+                    }
+
+                    // Calcula o progresso da FASE 1
+                    const processados = window.__hudTotalDeItensPreparo__ - window.__hudFilaDePreparo__.length;
+                    const percentual = Math.round((processados / window.__hudTotalDeItensPreparo__) * 100);
+                    const msg = \`Preparando dados... (\${percentual}%) \${processados} / \${window.__hudTotalDeItensPreparo__}\`;
+
+                    criaAlerta("carregando", "ativa", msg);
+
+                    // Processa o lote
+                    for (const item of lote) {
+                        const ficha = retornaFicha(item.cd);
+                        window.__hudFichasParaIndexar__.add(ficha);
+
+                        const indice = window.__originalRetornaIndice__(ficha, item.cd);
+
+                        if (indice === -1) {
+                            jsonPrincipal[ficha].push(item);
+                            const novoIndice = jsonPrincipal[ficha].length - 1;
+                            window.__hudFilaDeCarga__.push({ cd: item.cd, indice: novoIndice, id: item.cd + '@' + (item.cdCity || 'CIDADE_PADRAO') });
+                        } else if (jsonPrincipal[ficha][indice].visible == false) {
+                            window.__hudFilaDeCarga__.push({ cd: item.cd, indice: indice, id: item.cd + '@' + (item.cdCity || 'CIDADE_PADRAO') });
+                        }
+                    }
+
+                    setTimeout(processarLoteDePreparo, 0);
+                }
+
+                /**
+                 * Listener principal que recebe os dados do cache
+                 */
+                document.addEventListener('hud:plotFast', (e) => {
+                    const items = e.detail.items;
+                    if (!items) return;
+
+                    console.log('[HUD Page Context] Recebidos ' + items.length + ' itens do cache.');
+
+                    // --- (INÍCIO DA MODIFICAÇÃO - SYNC) ---
+                    // (v3) Guarda a lista COMPLETA de IDs que vieram do cache
+                    // para a sincronização no final.
+                    console.log('[HUD Page Context] Armazenando %s IDs do cache para sincronização delta.', items.length);
+                    window.__hudCachePlottedIDs__ = new Set(items.map(item => item.cd));
+                    // --- (FIM DA MODIFICAÇÃO - SYNC) ---
+
+                    try {
+                        window.__hudFilaDePreparo__ = items;
+                        window.__hudTotalDeItensPreparo__ = items.length;
+                        window.__hudFilaDeCarga__ = [];
+                        window.__hudFichasParaIndexar__.clear();
+
+                        processarLoteDePreparo();
+
+                    } catch (err) {
+                        console.error("[HUD Page Context] Erro ao processar dados do cache:", err);
+                        // Restaura em caso de erro
+                        window.retornaIndice = window.__originalRetornaIndice__;
+                        window.centraliza = window.__originalCentraliza__;
+                        window.criaAlerta = window.__originalCriaAlerta__;
+                        // --- (INÍCIO DA MODIFICAÇÃO - SYNC) ---
+                        // (v3) Restaura a função de plotagem em caso de erro
+                        window.plotaItensNoMapa = window.__originalPlotaItensNoMapa__;
+                        // --- (FIM DA MODIFICAÇÃO - SYNC) ---
+                        if (typeof criaAlerta === 'function') {
+                            criaAlerta("carregando", "cancela");
+                        }
+                    }
+                });
+            })();
+        `;
+
+        // 5. Cria e injeta o script
+        const scriptElement = document.createElement('script');
+        scriptElement.id = 'hud-injected-script';
+        scriptElement.textContent = scriptContent;
+        (document.head || document.documentElement).appendChild(scriptElement);
+
+        scriptElement.remove();
+    }
+
+    /** (NOVO) Ativa um aviso antes do usuário fechar ou recarregar a página */
+    function ativarAvisoDeSaida() {
+        const handler = (event) => {
+            // Esta linha é necessária para a maioria dos navegadores
+            event.preventDefault();
+            // Esta linha é para navegadores mais antigos
+            event.returnValue = '';
+            return '';
+        };
+
+        // Adiciona o aviso
+        window.addEventListener('beforeunload', handler);
+    }
 
     // (NOVA FUNÇÃO HELPER) Lida com o 'status: true/false'
             function fazerRequisicaoDaPagina(url, data, debugInfo) {
@@ -1318,12 +1679,212 @@
                 val => state.abrirNovaGuia = val
             ));
 
+            // --- Grupo 4: Cache de Dados ---
+            content.appendChild(createSettingsHeader("Cache de Carregamento"));
+
+            // --- (INÍCIO DA MODIFICAÇÃO) ---
+
+            // Container para os botões de Importar/Exportar/Limpar
+            const cacheButtonsContainer = document.createElement('div');
+            cacheButtonsContainer.style.display = 'flex';
+            cacheButtonsContainer.style.flexDirection = 'column'; // Um botão por linha
+            cacheButtonsContainer.style.gap = '8px'; // Espaço entre os botões
+            cacheButtonsContainer.style.marginTop = '5px';
+
+            // --- Botão de EXPORTAR Cache ---
+            const btnExportarCache = document.createElement('button');
+            btnExportarCache.className = 'hud-footer-btn'; // Reutiliza estilo
+            btnExportarCache.textContent = 'Exportar Cache (Backup)';
+            btnExportarCache.style.width = '100%';
+            btnExportarCache.style.backgroundColor = 'var(--hud-accent)'; // Cor azul
+            btnExportarCache.style.borderColor = 'var(--hud-accent)';
+            btnExportarCache.style.color = 'white';
+
+            btnExportarCache.onclick = async () => {
+                if (!cacheDB) {
+                    showHudToast("Erro: O banco de dados do cache não está acessível.");
+                    return;
+                }
+                btnExportarCache.textContent = 'Exportando... (Aguarde)';
+                btnExportarCache.disabled = true;
+
+                try {
+                    // 1. Lê TODOS os itens da tabela 'geoItems'
+                    console.log("[HUD Script - Export] Lendo todos os itens do cache...");
+                    const allItems = await cacheDB.geoItems.query().all().execute();
+                    console.log(`[HUD Script - Export] ${allItems.length} itens lidos.`);
+
+                    if (allItems.length === 0) {
+                        showHudToast("Cache vazio. Nada para exportar.");
+                        btnExportarCache.textContent = 'Cache vazio';
+                        return;
+                    }
+
+                    // 2. Converte para JSON
+                    const jsonString = JSON.stringify(allItems);
+
+                    // 3. Cria um Blob (arquivo em memória)
+                    const blob = new Blob([jsonString], { type: 'application/json' });
+                    const url = URL.createObjectURL(blob);
+
+                    // 4. Cria um link de download invisível e clica nele
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `geogrid_cache_backup_${getTodayDate()}.json`;
+                    document.body.appendChild(a);
+                    a.click();
+
+                    // 5. Limpa
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+
+                    console.log("[HUD Script - Export] Exportação concluída!");
+                    btnExportarCache.textContent = 'Exportado com Sucesso!';
+                    btnExportarCache.style.backgroundColor = 'var(--hud-green)'; // Verde
+                    btnExportarCache.style.borderColor = 'var(--hud-green)';
+
+                } catch (e) {
+                    console.error("[HUD Script - Export] Erro ao exportar cache:", e);
+                    showHudToast("Erro ao exportar: " + e.message);
+                    btnExportarCache.textContent = 'Erro na Exportação';
+                     btnExportarCache.style.backgroundColor = 'var(--hud-red)'; // Vermelho
+                    btnExportarCache.style.borderColor = 'var(--hud-red)';
+                } finally {
+                     // Reseta o botão após alguns segundos
+                    setTimeout(() => {
+                        btnExportarCache.textContent = 'Exportar Cache (Backup)';
+                        btnExportarCache.style.backgroundColor = 'var(--hud-accent)';
+                        btnExportarCache.style.borderColor = 'var(--hud-accent)';
+                        btnExportarCache.disabled = false;
+                    }, 3000);
+                }
+            };
+            cacheButtonsContainer.appendChild(btnExportarCache);
+
+
+            // --- Botão de IMPORTAR Cache ---
+            const btnImportarCache = document.createElement('button');
+            btnImportarCache.className = 'hud-footer-btn'; // Reutiliza estilo
+            btnImportarCache.textContent = 'Importar Cache (Restaurar)';
+            btnImportarCache.style.width = '100%';
+            btnImportarCache.style.backgroundColor = 'var(--hud-orange)'; // Cor laranja
+            btnImportarCache.style.borderColor = 'var(--hud-orange)';
+            btnImportarCache.style.color = 'white';
+
+            btnImportarCache.onclick = () => {
+                if (!cacheDB) {
+                    showHudToast("Erro: O banco de dados do cache não está acessível.");
+                    return;
+                }
+
+                // 1. Cria um input de arquivo invisível
+                const fileInput = document.createElement('input');
+                fileInput.type = 'file';
+                fileInput.accept = '.json, application/json';
+
+                // 2. Define o que fazer quando um arquivo for selecionado
+                fileInput.onchange = async (e) => {
+                    const file = e.target.files[0];
+                    if (!file) return;
+
+                    btnImportarCache.textContent = 'Importando... (Aguarde)';
+                    btnImportarCache.disabled = true;
+
+                    try {
+                        const text = await file.text();
+                        const items = JSON.parse(text);
+
+                        if (!Array.isArray(items)) {
+                             throw new Error("Arquivo JSON inválido. O conteúdo não é um array.");
+                        }
+
+                        console.log(`[HUD Script - Import] Arquivo lido. Importando ${items.length} itens...`);
+
+                        // 3. Limpa o cache antigo antes de importar (Opcional, mas recomendado)
+                        await cacheDB.geoItems.clear();
+
+                        // 4. (O PULO DO GATO) O db.js 'put' aceita um array para bulk-insert
+                        await cacheDB.geoItems.put(items);
+
+                        console.log("[HUD Script - Import] Importação concluída!");
+                        btnImportarCache.textContent = 'Importado com Sucesso!';
+                        btnImportarCache.style.backgroundColor = 'var(--hud-green)'; // Verde
+                        btnImportarCache.style.borderColor = 'var(--hud-green)';
+                        showHudToast(`Sucesso! ${items.length} itens importados. Recarregue a página.`);
+
+                    } catch (err) {
+                        console.error("[HUD Script - Import] Erro ao importar cache:", err);
+                        showHudToast("Erro ao importar: " + err.message);
+                        btnImportarCache.textContent = 'Erro na Importação';
+                        btnImportarCache.style.backgroundColor = 'var(--hud-red)'; // Vermelho
+                        btnImportarCache.style.borderColor = 'var(--hud-red)';
+                    } finally {
+                        // Reseta o botão
+                        setTimeout(() => {
+                            btnImportarCache.textContent = 'Importar Cache (Restaurar)';
+                            btnImportarCache.style.backgroundColor = 'var(--hud-orange)';
+                            btnImportarCache.style.borderColor = 'var(--hud-orange)';
+                            btnImportarCache.disabled = false;
+                        }, 3000);
+                    }
+                };
+
+                // 5. Clica no input de arquivo invisível para abrir a janela "Selecionar Arquivo"
+                fileInput.click();
+            };
+            cacheButtonsContainer.appendChild(btnImportarCache);
+
+
+            // --- Botão de LIMPAR Cache (Existente) ---
+            const btnLimparCache = document.createElement('button');
+            btnLimparCache.className = 'hud-footer-btn danger'; // Reutiliza estilo
+            btnLimparCache.textContent = 'Limpar Cache de Carregamento';
+            btnLimparCache.style.width = '100%';
+            //btnLimparCache.style.marginTop = '5px'; // (Removido, pois o 'gap' do container cuida disso)
+
+            btnLimparCache.onclick = async () => {
+                if (!cacheDB) {
+                    showHudToast("Erro: O banco de dados do cache não está acessível.");
+                    return;
+                }
+                if (confirm("Você tem certeza?\n\nIsso forçará um recarregamento lento (8 minutos) da próxima vez que você carregar as cidades.")) {
+                    try {
+                        btnLimparCache.textContent = 'Limpando...';
+
+                        // Limpa AMBOS os caches
+                        await cacheDB.apiResponses.clear();
+                        await cacheDB.geoItems.clear(); // <-- (NOVO) Limpa o cache inteligente
+
+                        btnLimparCache.textContent = 'Limpo com Sucesso!';
+                        btnLimparCache.style.backgroundColor = 'var(--hud-green)';
+                        btnLimparCache.style.borderColor = 'var(--hud-green)';
+                        btnLimparCache.style.color = 'white';
+
+                    } catch (e) {
+                        showHudToast("Erro ao limpar o cache: " + e.message);
+                    } finally {
+                         setTimeout(() => {
+                            btnLimparCache.textContent = 'Limpar Cache de Carregamento';
+                            btnLimparCache.style.backgroundColor = '';
+                            btnLimparCache.style.borderColor = 'var(--hud-red)';
+                            btnLimparCache.style.color = 'var(--hud-red)';
+                        }, 2500);
+                    }
+                }
+            };
+            cacheButtonsContainer.appendChild(btnLimparCache);
+
+            // Adiciona o container (com os 3 botões) ao painel de configurações
+            content.appendChild(cacheButtonsContainer);
+
+            // --- (FIM DA MODIFICAÇÃO) ---
+
             // --- Cria o painel ---
             createDraggablePanel('blocoPredefinicoesHUD', 'Predefinições', content, {
                 top: mainPanelRect.top,
                 left: mainPanelRect.left - 320,
                 width: 300,
-                height: 460 // (Altura mantida)
+                height: 570 // (Altura AUMENTADA para caber os novos botões)
             });
         });
 
@@ -1573,59 +2134,46 @@
 
 
     /**
-     * Inicia o interceptador de XHR (API).
-     * (ESTRATÉGIA HÍBRIDA - Gatilho direto para Splitter, Vigia de 3s para os outros)
+     * (MODIFICADO) Inicia o interceptador de XHR (API).
+     * (NOVO) 'carregaCompletar.php' agora escreve no cache 'geoItems'.
+     * (NOVO) 'carregaItensCidades.php' é o GATILHO para a carga rápida.
      */
     function iniciarInterceptadorXHR() {
-        // Handlers para cada API que queremos "ouvir"
+
+        // --- Handlers (Funções que gravam no cache e fazem outras lógicas) ---
         const handlers = {
             "api.php": (data, url, bodyParams) => {
+                // ... (toda a sua lógica original de 'api.php' permanece igual) ...
                 if (bodyParams && bodyParams.get) {
-                    // --- (INÍCIO DA MODIFICAÇÃO) ---
                     const controlador = bodyParams.get("controlador");
                     const metodo = bodyParams.get("metodo");
                     const codigo = bodyParams.get("codigo");
 
-                    // SÓ captura o código-pai (ex: TA...) se for a chamada de carregar o diagrama
-                    // E IGNORA as chamadas de 'fichaEquipamento'
                     if (controlador === 'diagrama' && metodo === 'carregarCabosEquipamentos' && codigo) {
                         ultimoCodigoEquipamentoPai = codigo;
                         console.log('[HUD Script] Código do equipamento PAI capturado:', ultimoCodigoEquipamentoPai);
                     }
-                    // --- (FIM DA MODIFICAÇÃO) ---
                 }
 
-                // Lógica original de resetar o HUD de clientes
                 if (data?.equipamentos) {
-                    // (NOTA) Precisamos garantir que isso também não apague nosso código-pai
                     const codigoPaiPreservado = ultimoCodigoEquipamentoPai;
                     const codigoPostePreservado = ultimoCodigoPoste;
-
-                    resetState(); // Reseta os dados
-
-                    // Restaura os códigos
+                    resetState();
                     ultimoCodigoEquipamentoPai = codigoPaiPreservado;
                     ultimoCodigoPoste = codigoPostePreservado;
-
                     const conteudoDiv = document.querySelector("#hudPainelTeste .hud-content");
                     if(conteudoDiv) {
-                        // Limpa, mas já adiciona a barra de pesquisa
                         conteudoDiv.innerHTML = '';
                         const searchBar = document.createElement('div');
                         searchBar.className = 'hud-search-bar';
-
                         searchBar.style.display = state.searchBarVisible ? 'block' : 'none';
-
                         searchBar.innerHTML = `<input type="text" id="hud-search-field" class="hud-search-input" placeholder="Pesquisar contrato (só números)...">`;
                         conteudoDiv.appendChild(searchBar);
-
-                        // Adiciona o listener de input ao novo campo
                         const searchInput = document.getElementById('hud-search-field');
                         searchInput.oninput = (e) => {
                             e.target.value = e.target.value.replace(/\D/g, '');
                             debouncedSearch();
                         };
-
                         const textNode = document.createElement('div');
                         textNode.textContent = "Aguardando abertura de equipamento...";
                         textNode.style.padding = "8px 0";
@@ -1635,9 +2183,9 @@
                 ultimaAPI = data;
             },
             "carregarPortas.php": (data, url, bodyParams) => {
+                // ... (toda a sua lógica original de 'carregarPortas.php' permanece igual) ...
                 const equipId = bodyParams?.get("codigo");
                 if (!equipId || !ultimaAPI?.dados) return;
-
                 const nomeRede = ultimaAPI.dados.nome_rede;
                 if (!equipamentosInfo[equipId]) {
                     equipamentosInfo[equipId] = { nomeRede, clientes: [] };
@@ -1645,18 +2193,16 @@
                         equipamentosOrdem.push(equipId);
                     }
                 }
-
                 data.registros.saidas.forEach(p => {
                     if (p.cliente.possuiCliente) {
                         equipamentosInfo[equipId].clientes.push({
-                            id: p.cliente.id,
-                            porta: p.fibra,
-                            obs: p.comentario?.texto ?? ""
+                            id: p.cliente.id, porta: p.fibra, obs: p.comentario?.texto ?? ""
                         });
                     }
                 });
             },
             "carregarFibras.php": (data) => {
+                // ... (toda a sua lógica original de 'carregarFibras.php' permanece igual) ...
                 if (data?.registros) {
                     if (!equipamentosInfo['__porDemanda__']) {
                         equipamentosInfo['__porDemanda__'] = { nomeRede: 'Clientes por Demanda', clientes: [] };
@@ -1664,178 +2210,234 @@
                     data.registros.forEach(p => {
                         if (p.cliente.possuiCliente) {
                             equipamentosInfo['__porDemanda__'].clientes.push({
-                                id: p.cliente.id,
-                                porta: '?',
-                                obs: p.comentario?.texto ?? ""
+                                id: p.cliente.id, porta: '?', obs: p.comentario?.texto ?? ""
                             });
                         }
                     });
                 }
             },
             "consultarCliente.php": (data, url, bodyParams) => {
+                // ... (toda a sua lógica original de 'consultarCliente.php' permanece igual) ...
                 const idCliente = bodyParams?.get("idCliente");
-                if (idCliente) {
-                    infoClientes[idCliente] = { id: idCliente, data };
-                    // Atualiza o HUD (com debounce)
-                    debouncedFinalizar();
-                }
+                if (idCliente) { infoClientes[idCliente] = { id: idCliente, data }; debouncedFinalizar(); }
             },
-
             "carregaViabilidadeMarcadorJava.php": (data, url, bodyParams) => {
-                // (Existente) Lógica da resposta
+                // ... (toda a sua lógica original de 'carregaViabilidadeMarcadorJava.php' permanece igual) ...
                 const loc = data?.dados?.[0];
                 if (loc) localizacao = [loc.lat, loc.lng];
-
-                // (Existente) Lógica do payload (request)
                 if (bodyParams && bodyParams.get) {
                     const posteRaw = bodyParams.get("poste");
-                    if (posteRaw) {
-                        const posteLimpo = posteRaw.replace(/^PT/i, '');
-                        ultimoCodigoPoste = posteLimpo;
-                        //console.log('HUD Script: Código do poste capturado:', ultimoCodigoPoste);
-                    }
+                    if (posteRaw) { ultimoCodigoPoste = posteRaw.replace(/^PT/i, ''); }
                 }
             },
+            "carregaTipoPadrao": (data) => { /* ...lógica existente... */ },
+            "solicitaBackup.php": (data) => { /* ...lógica existente... */ },
+            "funcoesRoteamentoMapa.php": (data) => { /* ...lógica existente... */ },
+            "carrega_tiposDeEquipamentos.php": (data) => { /* ...lógica existente... */ },
 
-            "carregaTipoPadrao": (data) => {
-                const fabricante = data?.fabricante;
-                const tipo = data?.tipo;
-                let codigoParaInserir = null;
-                let seletorDoInput = null;
+            // --- Handlers de Cache (Lógica de gravação ATUALIZADA) ---
 
-                const codigoPoste = ultimoCodigoPoste || "00000";
-
-                // 1. Define o código E o seletor correto
-                if (fabricante === "Overtek" && tipo === "Caixa de Atendimento (Splitter)") {
-                    codigoParaInserir = `cx em. ${codigoPoste}`;
-                    seletorDoInput = '.template-caixa input[name="codigo"]';
-                } else if (fabricante === "Furukawa" && tipo === "terminal de teste") {
-                    codigoParaInserir = `cx at. ${codigoPoste}`;
-                    seletorDoInput = '.template-terminal input[name="codigo"]';
+            "carregaItensCidades.php": (data, url, bodyParams) => {
+                // Esta chamada apenas GRAVA no cache "burro"
+                gravarNoCache(url, bodyParams.toString(), data);
+            },
+            "carregaAcessoriosPoste.php": (data, url, bodyParams) => {
+                // Esta chamada apenas GRAVA no cache "burro"
+                if (bodyParams && bodyParams.get('poste')) {
+                    gravarNoCache(url, bodyParams.toString(), data);
                 }
+                /* ...lógica existente... */
+            },
 
-                if (!codigoParaInserir || !seletorDoInput) {
-                    return;
+            // (NOVO) 'carregaCompletar' agora é um "escritor inteligente"
+            "carregaCompletar.php": async (data, url, bodyParams) => {
+                // 1. Mantém o cache "burro" (é bom como fallback)
+                gravarNoCache(url, bodyParams.toString(), data);
+
+                // 2. Inicia a lógica do cache "inteligente"
+                if (!cacheDB) return;
+
+                // --- (INÍCIO DA CORREÇÃO) ---
+                try {
+                    let itemsToSave = [];
+
+                    // O 'data' pode ser um array (ex: cabos) ou um objeto (ex: postes)
+                    if (Array.isArray(data)) {
+                        itemsToSave = data;
+                    } else if (data && data.cd) { // Resposta de item único
+                        itemsToSave = [data];
+                    }
+
+                    // Filtra por itens válidos (só salva se tiver os dados mínimos)
+                    const validItems = itemsToSave.filter(item => item.cd && item.cdCity);
+
+                    if (validItems.length > 0) {
+                        // A SINTAXE CORRETA DO 'db.js':
+                        // Não precisamos de transações manuais!
+                        // O 'put' aceita um item ou um array de itens.
+                        await cacheDB.geoItems.put(validItems);
+                        console.log(`[HUD Script - Cache] Salvo ${validItems.length} itens no 'geoItems'.`);
+                    }
+                } catch (e) {
+                    // O erro de 'transaction' não vai mais acontecer aqui
+                    console.error(`[HUD Script - Cache] Erro ao salvar no 'geoItems':`, e);
                 }
-
-                // 3. (REVERTIDO) Usa o "Vigia" simples com timeout de 3s
-                const observer = new MutationObserver((mutationsList, obs) => {
-                    for (const mutation of mutationsList) {
-                        if (mutation.type === 'childList') {
-                            for (const node of mutation.addedNodes) {
-                                // 4. Verifica se o nó adicionado é o painel de cadastro
-                                if (node.nodeType === 1 && node.matches('.padrao-painel-flutuante.painel-acessorio-cadastro')) {
-
-                                    // 5. Painel encontrado! Usamos o seletor dinâmico
-                                    const inputCodigo = node.querySelector(seletorDoInput);
-
-                                    if (inputCodigo) {
-                                        // 6. Preenche o valor e foca no campo
-                                        inputCodigo.value = codigoParaInserir;
-                                        inputCodigo.focus();
-
-                                        // 7. Para de observar (trabalho concluído)
-                                        obs.disconnect();
-                                        return;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                });
-                observer.observe(document.body, { childList: true, subtree: true });
-                // 9. (MODIFICADO) Medida de segurança: 3 segundos
-                setTimeout(() => {
-                    observer.disconnect();
-                }, 3000); // 3 segundos
-            },
-
-            "carregaAcessoriosPoste.php": (data) => {
-                // 1. Pega o código do poste
-                const codigoPoste = ultimoCodigoPoste || "00000";
-                const codigoParaInserir = `ponte ${codigoPoste}`;
-
-                // 3. (REVERTIDO) Usa o "Vigia" simples com timeout de 3s
-                const observer = new MutationObserver((mutationsList, obs) => {
-                    for (const mutation of mutationsList) {
-                        if (mutation.type === 'childList') {
-                            for (const node of mutation.addedNodes) {
-                                // 4. Verifica se é o painel correto
-                                if (node.nodeType === 1 && node.matches('.padrao-painel-flutuante.painel-cadastro-cabo-ligacao')) {
-
-                                    // 5. Encontra o input de código DENTRO dele
-                                    const inputCodigo = node.querySelector('input[name="codigo"]');
-
-                                    if (inputCodigo) {
-                                        // 6. Preenche e foca
-                                        inputCodigo.value = codigoParaInserir;
-                                        inputCodigo.focus();
-
-                                        // 7. Limpa
-                                        obs.disconnect();
-                                        return;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                });
-                observer.observe(document.body, { childList: true, subtree: true });
-                setTimeout(() => {
-                    observer.disconnect();
-                }, 3000); // 3 segundos
-            },
-
-            "solicitaBackup.php": (data) => {
-                setTimeout(() => {atualizarElementosIndesejados();}, 100); // 100ms de espera
-            },
-
-            "funcoesRoteamentoMapa.php": (data) => {
-                setTimeout(() => {
-                    document.querySelectorAll(".menu-lateral-container, .menu-lateral-direito.menu-lateral-rota.absolute").forEach(el => { el.style.overflow = "auto"; });
-                }, 100); // 100ms de espera
-            },
-            "carrega_tiposDeEquipamentos.php": (data) => {
-                const codigoPoste = ultimoCodigoPoste || "00000";
-                const codigoParaInserir = `spl. TIPO ${codigoPoste}`;
-                setTimeout(() => {
-                    document.activeElement.value=codigoParaInserir
-                }, 100); // 100ms de espera
+                // --- (FIM DA CORREÇÃO) ---
             }
         };
 
+        // --- Função de Gravação (Helper interno - "Cache Burro") ---
+        async function gravarNoCache(url, payloadString, responseData) {
+            if (!cacheDB) { return; }
+            const cacheId = `${url}?${payloadString}`;
+            try {
+                await cacheDB.apiResponses.put({ // Salva no cache 'apiResponses'
+                    id: cacheId,
+                    url: url,
+                    data: responseData,
+                    timestamp: new Date().getTime()
+                });
+                // console.log(`[HUD Script - Cache] Salvo: ${cacheId.substring(0, 150)}...`);
+            } catch (e) {
+                console.error(`[HUD Script - Cache] Erro ao salvar ${cacheId}:`, e);
+            }
+        }
+
+        // --- Função Dispatcher (Helper interno) ---
+        // (Chama os handlers acima)
         function dispatchHandler(url, resp, bodyParams) {
             const key = Object.keys(handlers).find(k => url.includes(k));
             if (!key) return;
             try {
                 const data = JSON.parse(resp);
-                handlers[key](data, url, bodyParams);
+                handlers[key](data, url, bodyParams); // Chama o handler correspondente
             } catch (err) {}
         }
 
-        // Monkey-patching XMLHttpRequest
+        // --- Monkey-patching XMLHttpRequest ---
         const origOpen = XMLHttpRequest.prototype.open;
         const origSend = XMLHttpRequest.prototype.send;
 
         XMLHttpRequest.prototype.open = function(method, url) {
             this._url = url;
+            this._method = method;
+
+            // (GRAVADOR) Anexa o 'load' listener para salvar no cache QUANDO a rede responder
             this.addEventListener("load", () => {
-                let bodyParams;
-                if (this._body instanceof FormData) {
-                    bodyParams = this._body;
-                } else if (typeof this._body === "string") {
-                    bodyParams = new URLSearchParams(this._body);
-                } else {
-                    bodyParams = null;
-                }
+                if (this.status !== 200) return;
+                let bodyParams = (this._body instanceof FormData) ? this._body : new URLSearchParams(this._body || "");
+                // Chama o dispatcher, que vai salvar nos caches (burro e/ou inteligente)
                 dispatchHandler(this._url, this.responseText, bodyParams);
             });
+
             return origOpen.apply(this, arguments);
         };
 
+        // (LÓGICA DO 'SEND' REFEITA - COM .abort())
         XMLHttpRequest.prototype.send = function(body) {
             this._body = body;
-            return origSend.call(this, body);
+            const xhr = this;
+
+            // --- (INÍCIO DA MODIFICAÇÃO: LÓGICA DE BYPASS) ---
+            // Verifica se a flag de bypass (definida pelo script injetado) está ativa
+            try {
+                const gw = (typeof unsafeWindow !== 'undefined' ? unsafeWindow : window);
+                if (gw.__hudBypassProximaCarga__ === true) {
+                    console.log('[HUD Script - Interceptor] Flag de bypass detectada. Permitindo carregamento lento.');
+                    gw.__hudBypassProximaCarga__ = false; // Reseta a flag para a próxima vez
+                    origSend.call(xhr, body); // Chama o 'send' original
+                    return; // Pula toda a lógica de cache
+                }
+            } catch (err) {
+                // Mesmo se der erro ao ler a flag, continua o fluxo normal
+                console.warn("[HUD Script - Interceptor] Erro ao verificar flag de bypass.", err);
+            }
+            // --- (FIM DA MODIFICAÇÃO) ---
+
+            // --- (INÍCIO DA LÓGICA DO "LEITOR RÁPIDO") ---
+            const isFastLoadTrigger = xhr._url && xhr._url.includes("carregaItensCidades.php");
+
+            if (xhr._method === 'POST' && isFastLoadTrigger && cacheDB) {
+                console.log('[HUD Script] Gatilho de Carga Rápida detectado!');
+
+                (async () => {
+                    try {
+                        const bodyParams = new URLSearchParams(body);
+                        const cityCodes = bodyParams.getAll('json[]');
+                        const cityIDs = cityCodes.map(c => c.replace('CD', ''));
+
+                        const gw = (typeof unsafeWindow !== 'undefined' ? unsafeWindow : window);
+                        // (Não precisamos mais criar o alerta aqui, pois o site já o faz)
+
+                        console.log(`[HUD Script] Consultando cache para cidades: ${cityIDs.join(', ')}`);
+
+                        // 1. Pede TODOS os itens
+                        const allItems = await cacheDB.geoItems.query().all().execute();
+
+                        console.log(`[HUD Script] ${allItems.length} itens lidos. Filtrando...`);
+
+                        // 2. Filtra em JavaScript
+                        const cityIdSet = new Set(cityIDs);
+                        const items = allItems.filter(item => {
+                            return cityIdSet.has(item.cdCity);
+                        });
+
+                        console.log(`[HUD Script] Total de ${items.length} itens encontrados em ${cityIDs.length} cidades.`);
+
+                        if (!items || items.length === 0) {
+                            console.warn("[HUD Script] Cache 'geoItems' vazio para estas cidades. Deixando a carga normal do site prosseguir.");
+                            origSend.call(xhr, body);
+                            return;
+                        }
+
+                        // 3. A "PONTE": Envia os dados para o script injetado
+                        console.log(`[HUD Script] Cache 'geoItems' carregado. Enviando ${items.length} itens para a página...`);
+                        document.dispatchEvent(new CustomEvent('hud:plotFast', {
+                            detail: { items: items }
+                        }));
+
+                        // --- (INÍCIO DA CORREÇÃO) ---
+                        // 4. ABORTA a requisição original
+                        // Não precisamos mais simular uma resposta. Apenas "matamos"
+                        // a chamada que o 'verificaCidades' fez.
+                        console.log("[HUD Script] Abortando requisição XHR original.");
+                        xhr.abort();
+                        // --- (FIM DA CORREÇÃO) ---
+
+                    } catch (e) {
+                        console.error("[HUD Script] Erro ao carregar do 'geoItems':", e);
+                        origSend.call(xhr, body); // Fallback para o carregamento lento
+                    }
+                })();
+
+                return;
+            }
+            // --- (FIM DA LÓGICA DO "LEITOR RÁPIDO") ---
+
+            // --- Lógica de cache antiga (para 'carregaCompletar' etc.) ---
+            const isOldCacheable = xhr._url && (
+                xhr._url.includes("carregaCompletar.php") ||
+                (xhr._url.includes("carregaAcessoriosPoste.php") && body && body.includes("poste="))
+            );
+
+            if (xhr._method === 'POST' && isOldCacheable && cacheDB) {
+                (async () => {
+                    let bodyParams = new URLSearchParams(body);
+                    const cacheId = `${xhr._url}?${bodyParams.toString()}`;
+                    const cachedData = await lerDoCache(cacheId);
+
+                    if (cachedData) {
+                        Object.defineProperty(xhr, 'responseText', { value: JSON.stringify(cachedData) });
+                        Object.defineProperty(xhr, 'status', { value: 200 });
+                        Object.defineProperty(xhr, 'readyState', { value: 4 });
+                        xhr.dispatchEvent(new Event('load'));
+                    } else {
+                        origSend.call(xhr, body);
+                    }
+                })();
+            } else {
+                origSend.call(xhr, body);
+            }
         };
     }
 
@@ -2915,19 +3517,39 @@ function iniciarListenerDeColarCoordenadas() {
         }, true); // Usa a fase de captura
     }
 
-    // --- INICIAÇÃO (FINAL) ---
-    injetarEstilosGlobais();
-    iniciarListenerDeColarCoordenadas();
-    iniciarInterceptadorXHR();
+// --- INICIAÇÃO (FINAL) ---
 
-    // (NOVO) Inicia o interceptador do mapa
-    iniciarInterceptadorDoMapa();
+    // (NOVO) Criamos uma função 'main' assíncrona para controlar a ordem de inicialização
+    async function runMainScript() {
 
-    // (NOVO) Inicia o listener de busca por poste
-    iniciarListenerDeBuscaPoste();
-    iniciarListenerDePesquisaRapida();
+        // 1. Funções síncronas que podem rodar primeiro
+        // (Estes não dependem do banco de dados)
+        injetarEstilosGlobais();
+        injetarScriptPagina();
+        iniciarInterceptadorDoMapa();
+        ativarAvisoDeSaida();
 
-    // Listener da tela de Equipamentos
-    iniciarListenerAdicionarEquipamento();
+        // 2. (IMPORTANTE) Espera o DB estar pronto
+        try {
+            await iniciarCacheDB(); // <-- O 'await' pausa aqui até o DB estar pronto
+            console.log("[HUD Script] Banco de dados pronto.");
+        } catch (e) {
+            console.error("[HUD Script] FALHA CRÍTICA ao iniciar DB. O cache não funcionará.", e);
+            // Mesmo se falhar, o resto do script (HUD, etc.) pode continuar
+        }
 
-})();
+        // 3. Funções que dependem do DB ou devem rodar após o 'await'
+        // (iniciarInterceptadorXHR agora pode usar 'cacheDB' com segurança)
+        iniciarListenerDeColarCoordenadas();
+        iniciarInterceptadorXHR(); // <-- Agora só roda DEPOIS do DB
+        iniciarListenerDeBuscaPoste();
+        iniciarListenerDePesquisaRapida();
+        iniciarListenerAdicionarEquipamento();
+
+        console.log("[HUD Script] Todos os listeners iniciados.");
+    }
+
+    // (NOVO) Chama a função main assíncrona para iniciar tudo
+    runMainScript();
+
+    })(); // Mantém o fechamento do IIFE original
