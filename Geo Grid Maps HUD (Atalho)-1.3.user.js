@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Geogrid Tools
 // @namespace    http://tampermonkey.net/
-// @version      3.1
+// @version      3.2
 // @description  Adiciona um HUD com informações de clientes e atalhos no Geo Grid, ativado pela tecla "+" do Numpad.
 // @author       Jhon
 // @match        http://172.16.6.57/geogrid/aconcagua/*
@@ -592,6 +592,7 @@
                 window.__hudIsDeltaLoading__ = false;    // (v3) Flag para 'plotaItensNoMapa' saber que é o delta sync
                 // --- (FIM DA MODIFICAÇÃO - SYNC) ---
 
+                window.__hudFastLoadEmAndamento__ = false;
 
                 // --- (INÍCIO DA OTIMIZAÇÃO v4.4: MONKEY-PATCHING) ---
                 window.__originalRetornaIndice__ = window.retornaIndice;
@@ -619,13 +620,28 @@
                 };
 
                 window.criaAlerta = function(tipo, acao, msg) {
-                    if (tipo === "carregando") {
-                        if (acao === "ativa") {
-                            window.__originalCriaAlerta__("carregando", "cancela"); // Limpa o anterior
-                            window.__originalCriaAlerta__(tipo, acao, msg); // Mostra o novo
+                    // Se NÃO for do tipo "carregando", apenas passe para a original.
+                    if (tipo !== "carregando") {
+                        return window.__originalCriaAlerta__(...arguments);
+                    }
+
+                    // Se for do tipo "carregando"
+                    if (acao === "ativa") {
+                        // O comportamento "ativa" (mostrar/atualizar) é sempre o mesmo.
+                        window.__originalCriaAlerta__("carregando", "cancela"); // Limpa o anterior
+                        window.__originalCriaAlerta__(tipo, acao, msg); // Mostra o novo
+                    } else if (acao === "cancela") {
+                        // Se for "cancela", SÓ ignora se o fast load estiver rodando.
+                        if (window.__hudFastLoadEmAndamento__ === true) {
+                            // Fast load está em andamento, ignora o "cancela"
+                            // (O fast load vai cancelar a si mesmo quando terminar)
+                        } else {
+                            // Não é o fast load (é o slow load / delta sync),
+                            // então DEIXA o "cancela" passar.
+                            window.__originalCriaAlerta__(tipo, acao, msg);
                         }
-                        // Ignora "cancela"
                     } else {
+                        // Outra ação desconhecida? Passa para a original.
                         window.__originalCriaAlerta__(...arguments);
                     }
                 };
@@ -690,6 +706,7 @@
 
                     if (lote.length === 0) {
                         // --- O TRABALHO DA CARGA RÁPIDA ACABOU ---
+                        window.__hudFastLoadEmAndamento__ = false;
                         console.log('%c[HUD Page Context] Carga Rápida concluída!', 'color: #98c379; font-weight: bold;');
 
                         // Restaura funções nativas (exceto 'plotaItensNoMapa', que ainda precisamos)
@@ -818,6 +835,7 @@
                     // --- (FIM DA MODIFICAÇÃO - SYNC) ---
 
                     try {
+                        window.__hudFastLoadEmAndamento__ = true;
                         window.__hudFilaDePreparo__ = items;
                         window.__hudTotalDeItensPreparo__ = items.length;
                         window.__hudFilaDeCarga__ = [];
