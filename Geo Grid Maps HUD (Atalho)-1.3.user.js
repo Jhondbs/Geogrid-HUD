@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Geogrid Tools
 // @namespace    http://tampermonkey.net/
-// @version      3.3
+// @version      3.4
 // @description  Adiciona um HUD com informações de clientes e atalhos no Geo Grid, ativado pela tecla "+" do Numpad.
 // @author       Jhon
 // @match        http://172.16.6.57/geogrid/aconcagua/*
@@ -2354,10 +2354,67 @@
                     if (posteRaw) { ultimoCodigoPoste = posteRaw.replace(/^PT/i, ''); }
                 }
             },
-            "carregaTipoPadrao": (data) => { /* ...lógica existente... */ },
+            "carregaTipoPadrao": (data) => {
+                const fabricante = data?.fabricante;
+                const tipo = data?.tipo;
+                let codigoParaInserir = null;
+                let seletorDoInput = null;
+
+                const codigoPoste = ultimoCodigoPoste || "00000";
+
+                // 1. Define o código E o seletor correto
+                if (fabricante === "Overtek" && tipo === "Caixa de Atendimento (Splitter)") {
+                    codigoParaInserir = `cx em. ${codigoPoste}`;
+                    seletorDoInput = '.template-caixa input[name="codigo"]';
+                } else if (fabricante === "Furukawa" && tipo === "terminal de teste") {
+                    codigoParaInserir = `cx at. ${codigoPoste}`;
+                    seletorDoInput = '.template-terminal input[name="codigo"]';
+                }
+
+                if (!codigoParaInserir || !seletorDoInput) {
+                    return;
+                }
+
+                // 3. (REVERTIDO) Usa o "Vigia" simples com timeout de 3s
+                const observer = new MutationObserver((mutationsList, obs) => {
+                    for (const mutation of mutationsList) {
+                        if (mutation.type === 'childList') {
+                            for (const node of mutation.addedNodes) {
+                                // 4. Verifica se o nó adicionado é o painel de cadastro
+                                if (node.nodeType === 1 && node.matches('.padrao-painel-flutuante.painel-acessorio-cadastro')) {
+
+                                    // 5. Painel encontrado! Usamos o seletor dinâmico
+                                    const inputCodigo = node.querySelector(seletorDoInput);
+
+                                    if (inputCodigo) {
+                                        // 6. Preenche o valor e foca no campo
+                                        inputCodigo.value = codigoParaInserir;
+                                        inputCodigo.focus();
+
+                                        // 7. Para de observar (trabalho concluído)
+                                        obs.disconnect();
+                                        return;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+                observer.observe(document.body, { childList: true, subtree: true });
+                // 9. (MODIFICADO) Medida de segurança: 3 segundos
+                setTimeout(() => {
+                    observer.disconnect();
+                }, 3000); // 3 segundos
+            },
             "solicitaBackup.php": (data) => { /* ...lógica existente... */ },
             "funcoesRoteamentoMapa.php": (data) => { /* ...lógica existente... */ },
-            "carrega_tiposDeEquipamentos.php": (data) => { /* ...lógica existente... */ },
+            "carrega_tiposDeEquipamentos.php": (data) => {
+                const codigoPoste = ultimoCodigoPoste || "00000";
+                const codigoParaInserir = `spl. TIPO ${codigoPoste}`;
+                setTimeout(() => {
+                    document.activeElement.value=codigoParaInserir
+                }, 100); // 100ms de espera
+            },
 
             // --- Handlers de Cache (Lógica de gravação ATUALIZADA) ---
 
@@ -2366,11 +2423,45 @@
                 gravarNoCache(url, bodyParams.toString(), data);
             },
             "carregaAcessoriosPoste.php": (data, url, bodyParams) => {
-                // Esta chamada apenas GRAVA no cache "burro"
+                // --- Lógica da v3.3 (CACHE) ---
                 if (bodyParams && bodyParams.get('poste')) {
                     gravarNoCache(url, bodyParams.toString(), data);
                 }
-                /* ...lógica existente... */
+
+                // --- Lógica da v2.7 (PREENCHIMENTO) ---
+                // 1. Pega o código do poste
+                const codigoPoste = ultimoCodigoPoste || "00000";
+                const codigoParaInserir = `ponte ${codigoPoste}`;
+
+                // 3. Usa o "Vigia" simples com timeout de 3s
+                const observer = new MutationObserver((mutationsList, obs) => {
+                    for (const mutation of mutationsList) {
+                        if (mutation.type === 'childList') {
+                            for (const node of mutation.addedNodes) {
+                                // 4. Verifica se é o painel correto
+                                if (node.nodeType === 1 && node.matches('.padrao-painel-flutuante.painel-cadastro-cabo-ligacao')) {
+
+                                    // 5. Encontra o input de código DENTRO dele
+                                    const inputCodigo = node.querySelector('input[name="codigo"]');
+
+                                    if (inputCodigo) {
+                                        // 6. Preenche e foca
+                                        inputCodigo.value = codigoParaInserir;
+                                        inputCodigo.focus();
+
+                                        // 7. Limpa
+                                        obs.disconnect();
+                                        return;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+                observer.observe(document.body, { childList: true, subtree: true });
+                setTimeout(() => {
+                    observer.disconnect();
+                }, 3000); // 3 segundos
             },
 
             // (NOVO) 'carregaCompletar' agora é um "escritor inteligente"
