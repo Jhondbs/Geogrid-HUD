@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Geogrid Tools
 // @namespace    http://tampermonkey.net/
-// @version      3.2
+// @version      3.3
 // @description  Adiciona um HUD com informações de clientes e atalhos no Geo Grid, ativado pela tecla "+" do Numpad.
 // @author       Jhon
 // @match        http://172.16.6.57/geogrid/aconcagua/*
@@ -1344,6 +1344,7 @@
     let ultimaAPI;
     let ultimoCodigoPoste = null;
     let ultimoCodigoEquipamentoPai = null;
+    let hudUserInteracted = false;
 
     // --- 4. LÓGICA DE CRIAÇÃO E REMOÇÃO DO HUD ---
 
@@ -1971,6 +1972,7 @@
         infoClientes = {};
         isInitialLoadComplete = false;
         state.searchQuery = ''; // Limpa a pesquisa
+        hudUserInteracted = false;
 
         // NÃO limpa ultimoCodigoEquipamentoPai
         // NÃO limpa ultimoCodigoPoste
@@ -2052,7 +2054,17 @@
 
                 const li = document.createElement("div");
                 li.className = 'hud-client-row';
-                li.onclick = () => li.classList.toggle('clicked');
+                li.onclick = () => {
+                    li.classList.toggle('clicked');
+
+                    // --- INÍCIO DA CORREÇÃO ---
+                    // "Trava" o HUD assim que o usuário interagir pela primeira vez
+                    if (hudUserInteracted === false) {
+                         console.log('[HUD Script] Interação detetada (tachado). A desativar refresh no hover.');
+                         hudUserInteracted = true;
+                    }
+                    // --- FIM DA CORREÇÃO ---
+                };
 
                 let texto = clienteDetalhes.data.registro?.nome || "Cliente desconhecido";
                 let partes = texto.split(" - ");
@@ -2200,6 +2212,86 @@
                 }
                 ultimaAPI = data;
             },
+            "desvincularCliente.php": (data, url, bodyParams) => {
+                // Pega o código do splitter (ex: JPT_DIV76173) e a porta (ex: 4)
+                const codigoEquipamento = bodyParams?.get("codigo");
+                const portaCliente = bodyParams?.get("id"); // Este é o número da porta
+
+                if (!codigoEquipamento || !portaCliente) {
+                    console.warn("[HUD Script] 'desvincularCliente.php' intercetado sem código ou porta.");
+                    return;
+                }
+
+                console.log(`[HUD Script] Atualizando cliente para 'Removido': Equipamento ${codigoEquipamento}, Porta ${portaCliente}`);
+
+                try {
+                    // --- Etapa 1: Remover o cliente do nosso objeto de DADOS ---
+                    if (equipamentosInfo[codigoEquipamento] && equipamentosInfo[codigoEquipamento].clientes) {
+
+                        const indexParaRemover = equipamentosInfo[codigoEquipamento].clientes.findIndex(
+                            cliente => cliente.porta == portaCliente
+                        );
+
+                        if (indexParaRemover > -1) {
+                            // Remove o cliente do array de dados
+                            equipamentosInfo[codigoEquipamento].clientes.splice(indexParaRemover, 1);
+                            console.log("[HUD Script] Cliente removido dos DADOS.");
+                        } else {
+                             console.warn("[HUD Script] Porta não encontrada nos dados do equipamento.");
+                        }
+                    } else {
+                         console.warn("[HUD Script] Equipamento não encontrado em 'equipamentosInfo'.");
+                    }
+
+                    // --- Etapa 2: Atualizar a VISUALIZAÇÃO (do HTML) para "Removido" ---
+                    const conteudoDiv = document.querySelector("#hudPainelTeste .hud-content");
+                    if (!conteudoDiv) return;
+
+                    const todasAsLinhas = conteudoDiv.querySelectorAll('.hud-client-row');
+                    let linhaModificada = false;
+
+                    for (const linha of todasAsLinhas) {
+                        const portSpan = linha.querySelector('.port');
+
+                        // 1. Encontra a linha correta pela porta
+                        if (portSpan && portSpan.textContent.replace(':', '').trim() == portaCliente) {
+
+                            // 2. Pega o número do contrato ANTES de apagar
+                            let contratoNum = "0000"; // Default
+                            const contractSpan = linha.querySelector('.contract');
+                            if (contractSpan) {
+                                contratoNum = contractSpan.textContent.trim();
+                            }
+
+                            // 3. Define o novo texto (limpando o conteúdo antigo)
+                            //    (Mantemos o span da porta, pois é um bom identificador)
+                            linha.innerHTML = `
+                                <span class="port">${portSpan.innerHTML}</span>
+                                <span class="contract" style="color: var(--hud-red);">Removido (${contratoNum})</span>
+                            `;
+
+                            // 4. Adiciona a classe "tachado"
+                            linha.classList.add('clicked');
+
+                            // 5. (Opcional) Remove a cor de "rede divergente", se tiver
+                            linha.classList.remove('network-divergent');
+
+                            // 6. Torna o clique "permanente" (desativa o toggle)
+                            linha.onclick = null;
+
+                            linhaModificada = true;
+                            console.log("[HUD Script] Linha do cliente atualizada para 'Removido'.");
+                            break; // Para o loop
+                        }
+                    }
+                    if (!linhaModificada) {
+                        console.warn("[HUD Script] Não foi encontrada nenhuma linha no HTML com a porta " + portaCliente);
+                    }
+
+                } catch (e) {
+                    console.error("[HUD Script] Erro ao tentar atualizar cliente da HUD para 'Removido':", e);
+                }
+            },
             "carregarPortas.php": (data, url, bodyParams) => {
                 // ... (toda a sua lógica original de 'carregarPortas.php' permanece igual) ...
                 const equipId = bodyParams?.get("codigo");
@@ -2235,9 +2327,23 @@
                 }
             },
             "consultarCliente.php": (data, url, bodyParams) => {
-                // ... (toda a sua lógica original de 'consultarCliente.php' permanece igual) ...
                 const idCliente = bodyParams?.get("idCliente");
-                if (idCliente) { infoClientes[idCliente] = { id: idCliente, data }; debouncedFinalizar(); }
+                if (!idCliente) return;
+
+                // --- INÍCIO DA CORREÇÃO (Estratégia do "Tachado") ---
+
+                // 1. Se o usuário JÁ INTERAGIU (tachou um cliente),
+                // apenas atualiza os dados em segundo plano e NÃO redesenha.
+                if (hudUserInteracted === true) {
+                    infoClientes[idCliente] = { id: idCliente, data };
+                    return; // Sai da função e ignora o finalizarHud()
+                }
+
+                // 2. Se o usuário AINDA NÃO INTERAGIU, processa normalmente.
+                // (Isso permite que o HUD carregue os clientes iniciais)
+                infoClientes[idCliente] = { id: idCliente, data };
+                debouncedFinalizar();
+                // --- FIM DA CORREÇÃO ---
             },
             "carregaViabilidadeMarcadorJava.php": (data, url, bodyParams) => {
                 // ... (toda a sua lógica original de 'carregaViabilidadeMarcadorJava.php' permanece igual) ...
