@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Geogrid Tools
 // @namespace    http://tampermonkey.net/
-// @version      3.0
+// @version      3.1
 // @description  Adiciona um HUD com informações de clientes e atalhos no Geo Grid, ativado pela tecla "+" do Numpad.
 // @author       Jhon
 // @match        http://172.16.6.57/geogrid/aconcagua/*
@@ -2441,7 +2441,40 @@
         };
     }
 
-    // --- CÓDIGOS NOVOS (INÍCIO) ---
+    /**
+     * (NOVO) Inicia um listener para forçar o carregamento lento (bypass do cache).
+     * Se o usuário segurar CTRL ao clicar em "Mostrar Item", o cache rápido é ignorado.
+     */
+    function iniciarListenerDeBypassDeCarga() {
+        // Usamos 'mousedown' na fase de 'capture' (true) para garantir que
+        // definimos a flag ANTES do 'click' ser processado pela página.
+        document.body.addEventListener('mousedown', function(e) {
+
+            // 1. Verifica se o alvo é o botão de carregar
+            const target = e.target;
+            if (target && target.matches('img[name="mostrar_item"]')) {
+
+                // 2. Verifica se a tecla CTRL está pressionada
+                if (e.ctrlKey) {
+                    console.log('%c[HUD Script] CTRL+Click detectado no botão "Mostrar Item".', 'color: #f66a0a; font-weight: bold;');
+                    console.log('%c[HUD Script] Forçando carregamento lento (bypass do cache)...', 'color: #f66a0a; font-weight: bold;');
+
+                    // 3. Define a flag de bypass no contexto da PÁGINA (unsafeWindow)
+                    try {
+                        const gw = (typeof unsafeWindow !== 'undefined' ? unsafeWindow : window);
+                        gw.__hudBypassProximaCarga__ = true;
+
+                        // O seu interceptador XHR em 'iniciarInterceptadorXHR'
+                        // agora verá esta flag como 'true', fará o carregamento lento
+                        // e depois resetará a flag para 'false' automaticamente.
+
+                    } catch (err) {
+                        console.error("[HUD Script] Falha ao definir a flag de bypass no 'unsafeWindow'.", err);
+                    }
+                }
+            }
+        }, true); // 'true' usa a fase de CAPTURA
+    }
 
     //Colar Coordenadas (MODIFICADO - V4 - Foco no 'OK' após colar)
 function iniciarListenerDeColarCoordenadas() {
@@ -3519,7 +3552,7 @@ function iniciarListenerDeColarCoordenadas() {
 
 // --- INICIAÇÃO (FINAL) ---
 
-    // (NOVO) Criamos uma função 'main' assíncrona para controlar a ordem de inicialização
+// (NOVO) Criamos uma função 'main' assíncrona para controlar a ordem de inicialização
     async function runMainScript() {
 
         // 1. Funções síncronas que podem rodar primeiro
@@ -3540,6 +3573,7 @@ function iniciarListenerDeColarCoordenadas() {
 
         // 3. Funções que dependem do DB ou devem rodar após o 'await'
         // (iniciarInterceptadorXHR agora pode usar 'cacheDB' com segurança)
+        iniciarListenerDeBypassDeCarga(); // <-- ADICIONE ESTA LINHA
         iniciarListenerDeColarCoordenadas();
         iniciarInterceptadorXHR(); // <-- Agora só roda DEPOIS do DB
         iniciarListenerDeBuscaPoste();
