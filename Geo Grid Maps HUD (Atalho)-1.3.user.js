@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Geogrid Tools
 // @namespace    http://tampermonkey.net/
-// @version      3.5
+// @version      3.7
 // @description  Adiciona um HUD com informações de clientes e atalhos no Geo Grid, ativado pela tecla "+" do Numpad.
 // @author       Jhon
 // @match        http://172.16.6.57/geogrid/aconcagua/*
@@ -3768,6 +3768,357 @@ function iniciarListenerDeColarCoordenadas() {
         }, true); // Usa a fase de captura
     }
 
+    // --- (INÍCIO) MÓDULO DE INJEÇÃO V2 (vincularCliente) ---
+/**
+ * Inicia o "rapto" (monkey-patch) das funções do diagrama
+ * para injetar dados de cliente diretamente no SVG. (V2 - Interativo Corrigido)
+ */
+function iniciarInjecaoDiagramaV2() {
+    console.log("[HUD Script] Módulo de Injeção V2 (Interativo) iniciado.");
+    const gw = (typeof unsafeWindow !== 'undefined' ? unsafeWindow : window);
+
+    // Helper para normalizar nomes de rede (copiado da lógica da HUD)
+    const normalizarRede = nome => nome ? nome.replace(/^\d+\s*-\s*/, "").trim().toLowerCase() : "";
+
+    const interval = setInterval(() => {
+        // Espera que o protótipo da FIBRA esteja carregado
+        if (gw.geogrid &&
+            gw.geogrid.modulo &&
+            gw.geogrid.modulo.diagrama &&
+            gw.geogrid.modulo.diagrama.objetos &&
+            gw.geogrid.modulo.diagrama.objetos.fibra &&
+            gw.geogrid.modulo.diagrama.objetos.fibra.prototype.vincularCliente &&
+            gw.geogrid.modulo.diagrama.objetos.fibra.prototype.removerCliente) {
+
+            clearInterval(interval);
+            console.log("[HUD Script] Protótipo 'fibra.prototype' detectado. Aplicando patches V11 (Correção de Remoção)...");
+
+            try {
+                // Aplica o patch na função de VINCULAR
+                patchVincularCliente_V11(gw, normalizarRede);
+                // Aplica o patch na função de REMOVER
+                patchRemoverCliente_V4(gw);
+                console.log("[HUD Script] Patches V11 (vincular/remover) aplicados com sucesso!");
+            } catch (e) {
+                console.error("[HUD Script] Falha grave ao aplicar patch V11:", e);
+            }
+        }
+    }, 500); // Verifica a cada 500ms
+}
+
+/**
+ * Patch 1: Modifica 'vincularCliente' para DESENHAR os nossos dados. (V11 - Salva Referência)
+ */
+function patchVincularCliente_V11(gw, normalizarRede) {
+    // 1. Acesso às variáveis da PÁGINA
+    const $ = gw.$;
+
+    // 2. Guarda a função original
+    const originalVincularCliente = gw.geogrid.modulo.diagrama.objetos.fibra.prototype.vincularCliente;
+
+    // 3. Substitui a função
+    gw.geogrid.modulo.diagrama.objetos.fibra.prototype.vincularCliente = async function(idCliente) {
+        // 'this' é a 'fibra'
+
+        // --- CÓDIGO ORIGINAL (REIMPLEMENTADO) ---
+        let dadosCliente;
+        try {
+            dadosCliente = await $.ajax({
+                type: 'post',
+                url: 'php/diagramaJson/consultarCliente.php',
+                dataType: 'json',
+                data: {
+                    idRazaoSocial: '46', // ID Fixo
+                    idCliente: idCliente
+                }
+            });
+        } catch (e) {
+            console.error("[HUD Patch V11] Falha ao chamar consultarCliente.php:", e);
+            return originalVincularCliente.apply(this, arguments);
+        }
+
+        let corCliente = '';
+        if (dadosCliente.registro.nome.includes('desconhecido'))
+            corCliente = '#a5a5a5';
+        else if (dadosCliente.registro.nome.includes('ATIVO'))
+            corCliente = '#72f542';
+        else if (dadosCliente.registro.nome.includes('SUSPENSO'))
+            corCliente = '#FFCC00';
+        else
+            corCliente = '#f54242';
+
+        this.flags.cliente = true;
+        this.cliente = this.container.svg.append(function(){
+            return $(`
+            <svg>
+                <g style="fill:${corCliente};stroke:black;stroke-width:0.3;cursor:pointer;">
+                    <circle cx="5.54235" cy="2.28534" r="2.28534"/>
+                    <path d="M9.15385,24.81109c0-3.061,0-5.54235,5.54235-5.54235s5.54235,2.48139,5.54235,5.54235" transform="translate(-9.15385 -14.88462)"/>
+                </g>
+            </svg>`).children()[0];
+        });
+        const clientIcon = this.cliente; // Guarda a referência ao "boneco"
+
+        this.cliente
+            .on('mouseenter', () => {
+                this.objeto.diagrama.template.trigger('focouCliente', [this, gw.d3.mouse(gw.d3.select('body').node()), idCliente]);
+            })
+            .on('mouseleave', () => {
+                this.objeto.diagrama.template.trigger('desfocouCliente', [this]);
+            });
+
+        this.reposicionar();
+        // --- FIM DO CÓDIGO ORIGINAL ---
+
+
+        // --- (INÍCIO DA MODIFICAÇÃO - V11 INTERATIVO) ---
+        try {
+            if (dadosCliente && this.cliente) {
+
+                // 1. EXTRAI OS DADOS
+                const contrato = (dadosCliente.registro.nome.split(" - ")[1] || "N/A").trim();
+                const rede = (dadosCliente.rede?.rede || "").replace(/Card \d+ Porta \d+$/i, "").trim();
+
+                // 2. LÓGICA DE LIMITE DE 35 CHARS (V9)
+                const MAX_TOTAL_LENGTH = 35;
+                const separador = " - ";
+                let espacoParaRede = MAX_TOTAL_LENGTH - contrato.length - separador.length;
+                if (espacoParaRede < 0) espacoParaRede = 0;
+                let redeFinal = "";
+                if (rede.length > 0 && espacoParaRede > 0) {
+                    if (rede.length > espacoParaRede) {
+                        if (espacoParaRede > 3) {
+                            redeFinal = rede.substring(0, espacoParaRede - 3) + "...";
+                        } else {
+                            redeFinal = "";
+                        }
+                    } else {
+                        redeFinal = rede;
+                    }
+                }
+
+                // 3. PREPARA O SVG
+                const parentGroup = clientIcon.node().parentNode; // O <g> que contém o "boneco"
+                const svgNS = "http://www.w3.org/2000/svg";
+                const transform = clientIcon.attr('transform');
+                const match = /translate\(([^,]+),([^)]+)\)/.exec(transform);
+                const iconX = parseFloat(match[1]);
+                const iconY = parseFloat(match[2]);
+
+                // 4. LÓGICA DE POSIÇÃO E ORDEM (V8)
+                const lado = this.objeto?.lado || 'e';
+                let x, y, textAnchor, textoCompleto;
+                if (lado === 'd') {
+                    textoCompleto = contrato;
+                    if (redeFinal) textoCompleto += ` - ${redeFinal}`;
+                    x = iconX + 16;
+                    y = iconY + 8;
+                    textAnchor = "start";
+                } else {
+                    textoCompleto = contrato;
+                    if (redeFinal) textoCompleto = `${redeFinal} - ${contrato}`;
+                    x = iconX - 5;
+                    y = iconY + 8;
+                    textAnchor = "end";
+                }
+
+                // 5. CRIA O TEXTO
+                const textElement = document.createElementNS(svgNS, "text");
+                textElement.setAttribute("x", String(x));
+                textElement.setAttribute("y", String(y));
+                textElement.setAttribute("fill", "black");
+                textElement.setAttribute("font-size", "10px");
+                textElement.setAttribute("font-family", "Arial, sans-serif");
+                textElement.setAttribute("text-anchor", textAnchor);
+                textElement.setAttribute("style", "cursor: pointer; user-select: none;"); // Torna clicável
+                textElement.textContent = textoCompleto;
+
+                // 6. CRIA O FUNDO (RECT)
+                parentGroup.appendChild(textElement); // Adiciona temporariamente para medir
+                const bbox = textElement.getBBox(); // Mede o texto
+                parentGroup.removeChild(textElement); // Remove
+
+                const rectElement = document.createElementNS(svgNS, "rect");
+                rectElement.setAttribute("x", String(bbox.x - 2)); // Padding horizontal
+                rectElement.setAttribute("y", String(bbox.y - 1)); // Padding vertical
+                rectElement.setAttribute("width", String(bbox.width + 4));
+                rectElement.setAttribute("height", String(bbox.height + 2));
+                rectElement.setAttribute("rx", "2"); // Cantos arredondados
+                rectElement.setAttribute("style", "cursor: pointer;");
+
+                // 7. LÓGICA DE REDE DIVERGENTE E CORES
+                const equipId = this.objeto?.config?.id;
+                // 'state' e 'equipamentosInfo' são lidos do escopo GLOBAL do UserScript
+                const equipamentoInfo = (equipId && typeof equipamentosInfo !== 'undefined') ? equipamentosInfo[equipId] : null;
+                const nomeRedeEquipamento = equipamentoInfo ? normalizarRede(equipamentoInfo.nomeRede) : '';
+                const redeClienteNorm = normalizarRede(rede);
+                const isDemanda = equipId === '__porDemanda__';
+
+                let mesmaRede = true; // Padrão
+                if (nomeRedeEquipamento && redeClienteNorm) {
+                    mesmaRede = isDemanda ? true : redeClienteNorm.includes(nomeRedeEquipamento);
+                }
+
+                const destacar = (typeof state !== 'undefined' && state.destacarRedesDivergentes && !mesmaRede);
+                const isLight = document.body.classList.contains('hud-light-mode');
+
+                const highlightFill = isLight ? '#e1e4e8' : '#3a3f4b'; // Fundo do hover
+                const divergentFill = isLight ? 'rgba(215, 58, 73, 0.2)' : 'rgba(224, 108, 117, 0.2)'; // Fundo vermelho
+                const defaultFill = destacar ? divergentFill : 'transparent'; // Fundo padrão
+
+                rectElement.setAttribute("fill", defaultFill);
+
+                // 8. CRIA O GRUPO INTERATIVO
+                const interactiveGroup = document.createElementNS(svgNS, "g");
+                interactiveGroup.setAttribute("class", "hud-injected-group");
+                interactiveGroup.appendChild(rectElement); // Fundo primeiro
+                interactiveGroup.appendChild(textElement); // Texto na frente
+                parentGroup.appendChild(interactiveGroup); // Adiciona o grupo ao SVG
+
+                // *** INÍCIO DA CORREÇÃO (V11) ***
+                // Salva uma referência direta do grupo na instância da fibra ('this')
+                this.__hudInjectedGroup__ = interactiveGroup;
+                // *** FIM DA CORREÇÃO ***
+
+                // 9. ADICIONA OS EVENT LISTENERS
+                interactiveGroup.dataset.isClicked = 'false';
+
+                const setClickedState = (isClicked) => {
+                    interactiveGroup.dataset.isClicked = String(isClicked);
+                    if (isClicked) {
+                        textElement.setAttribute("opacity", "0.5");
+                        textElement.setAttribute("text-decoration", "line-through");
+                        clientIcon.attr("opacity", "0.5"); // Tacha o "boneco"
+                        rectElement.setAttribute("fill", defaultFill); // Volta ao fundo padrão
+                    } else {
+                        textElement.setAttribute("opacity", "1");
+                        textElement.setAttribute("text-decoration", "none");
+                        clientIcon.attr("opacity", "1"); // Restaura o "boneco"
+                        rectElement.setAttribute("fill", highlightFill); // Mantém o highlight
+                    }
+                };
+
+                interactiveGroup.addEventListener('mouseenter', () => {
+                    if (interactiveGroup.dataset.isClicked === 'false') {
+                        rectElement.setAttribute("fill", highlightFill);
+                    }
+                });
+
+                interactiveGroup.addEventListener('mouseleave', () => {
+                    if (interactiveGroup.dataset.isClicked === 'false') {
+                        rectElement.setAttribute("fill", defaultFill);
+                    }
+                });
+
+                interactiveGroup.addEventListener('click', () => {
+                    const newState = interactiveGroup.dataset.isClicked === 'false';
+                    setClickedState(newState);
+                });
+
+            }
+        } catch (e) {
+            console.error("[HUD Patch V11] Erro ao injetar dados no SVG:", e);
+        }
+        // --- (FIM) DA MODIFICAÇÃO ---
+    };
+}
+
+/**
+ * Patch 2: Modifica 'removerCliente' para LIMPAR os nossos dados. (V4 - Corrigido)
+ */
+function patchRemoverCliente_V4(gw) {
+    // 1. Guarda a função original
+    const originalRemoverCliente = gw.geogrid.modulo.diagrama.objetos.fibra.prototype.removerCliente;
+
+    // 2. Substitui
+    gw.geogrid.modulo.diagrama.objetos.fibra.prototype.removerCliente = function() {
+        // 'this' é a 'fibra'
+
+        // --- (INÍCIO) NOSSA LIMPEZA (V4 - CORRIGIDA) ---
+        try {
+            // 'this.__hudInjectedGroup__' foi salvo no 'patchVincularCliente_V11'
+            if (this.__hudInjectedGroup__ && this.__hudInjectedGroup__.parentNode) {
+                // Remove o grupo específico que salvamos
+                this.__hudInjectedGroup__.parentNode.removeChild(this.__hudInjectedGroup__);
+                this.__hudInjectedGroup__ = null; // Limpa a referência
+            } else {
+                // Se a referência não existir, loga um aviso, mas não faz nada
+                // para evitar apagar o grupo errado.
+                console.warn("[HUD Patch V4] Não foi possível encontrar '__hudInjectedGroup__' para remover.");
+            }
+        } catch(e) {
+            console.error("[HUD Patch V4] Erro ao limpar grupo injetado:", e);
+        }
+        // --- (FIM) NOSSA LIMPEZA ---
+
+        // 3. Chama a função original para remover o "bonequinho"
+        return originalRemoverCliente.apply(this, arguments);
+    };
+}
+
+/**
+ * Patch 2: Modifica 'removerCliente' para LIMPAR os nossos dados. (V3 - Limpa Grupo)
+ */
+function patchRemoverCliente_V3(gw) {
+    // 1. Guarda a função original
+    const originalRemoverCliente = gw.geogrid.modulo.diagrama.objetos.fibra.prototype.removerCliente;
+
+    // 2. Substitui
+    gw.geogrid.modulo.diagrama.objetos.fibra.prototype.removerCliente = function() {
+        // 'this' é a 'fibra'
+
+        // --- (INÍCIO) NOSSA LIMPEZA ---
+        try {
+            if (this.cliente) {
+                const parentGroup = this.cliente.node().parentNode;
+                // Remove o nosso grupo interativo (que contém o texto e o fundo)
+                const injectedGroup = parentGroup.querySelector('.hud-injected-group');
+                if (injectedGroup) {
+                    parentGroup.removeChild(injectedGroup);
+                }
+            }
+        } catch(e) {
+            console.error("[HUD Patch V3] Erro ao limpar grupo injetado:", e);
+        }
+        // --- (FIM) NOSSA LIMPEZA ---
+
+        // 3. Chama a função original para remover o "bonequinho"
+        return originalRemoverCliente.apply(this, arguments);
+    };
+}
+
+/**
+ * Patch 2: Modifica 'removerCliente' para LIMPAR os nossos dados.
+ * (Baseado no código-fonte de geogrid.modulo.diagrama.objetos.fibra.js)
+ */
+function patchRemoverCliente(gw) {
+    // 1. Guarda a função original
+    const originalRemoverCliente = gw.geogrid.modulo.diagrama.objetos.fibra.prototype.removerCliente;
+
+    // 2. Substitui
+    gw.geogrid.modulo.diagrama.objetos.fibra.prototype.removerCliente = function() {
+        // 'this' é a 'fibra'
+
+        // --- (INÍCIO) NOSSA LIMPEZA ---
+        try {
+            // O 'this.cliente' é o ícone do "bonequinho" que está prestes
+            // a ser removido pela função original.
+            if (this.cliente) {
+                const parentGroup = this.cliente.node().parentNode;
+                // Removemos os nossos textos ANTES que o ícone seja removido.
+                parentGroup.querySelectorAll('.hud-injected-text').forEach(el => el.remove());
+            }
+        } catch(e) {
+            console.error("[HUD Patch V2] Erro ao limpar textos injetados:", e);
+        }
+        // --- (FIM) NOSSA LIMPEZA ---
+
+        // 3. Chama a função original para remover o "bonequinho"
+        return originalRemoverCliente.apply(this, arguments);
+    };
+}
+// --- (FIM) MÓDULO DE INJEÇÃO V2 (vincularCliente) ---
+
 // --- INICIAÇÃO (FINAL) ---
 
 // (NOVO) Criamos uma função 'main' assíncrona para controlar a ordem de inicialização
@@ -3797,6 +4148,7 @@ function iniciarListenerDeColarCoordenadas() {
         iniciarListenerDeBuscaPoste();
         iniciarListenerDePesquisaRapida();
         iniciarListenerAdicionarEquipamento();
+        iniciarInjecaoDiagramaV2();
 
         console.log("[HUD Script] Todos os listeners iniciados.");
     }
