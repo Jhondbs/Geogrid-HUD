@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Geogrid Tools
 // @namespace    http://tampermonkey.net/
-// @version      3.11
+// @version      3.12
 // @description  Adiciona um HUD com informações de clientes e atalhos no Geo Grid, ativado pela tecla "+" do Numpad.
 // @author       Jhon
 // @match        http://172.16.6.57/geogrid/aconcagua/*
@@ -516,7 +516,7 @@
             // Abre (ou cria) o banco de dados
             cacheDB = await db.open({
                 server: 'geogridCache',
-                version: 2, // <-- (NOVO) ATUALIZADO PARA v2
+                version: 3,
                 schema: {
                     apiResponses: { // <-- (ANTIGO) Cache "burro" - Mantemos para fallback
                         key: { keyPath: 'id' }
@@ -524,7 +524,8 @@
                     geoItems: { // <-- (NOVO) Cache "inteligente"
                         key: { keyPath: 'cd' }, // Chave primária (ex: "JPT25588")
                         indexes: {
-                            city: 'cdCity' // Índice para buscar por cidade (ex: "1146")
+                            city: 'cdCity', // Índice para buscar por cidade (ex: "1146")
+                            dependencies: 'dependencies.cd'
                         }
                     }
                 }
@@ -2485,7 +2486,6 @@
                 // 2. Inicia a lógica do cache "inteligente"
                 if (!cacheDB) return;
 
-                // --- (INÍCIO DA CORREÇÃO) ---
                 try {
                     let itemsToSave = [];
 
@@ -2496,21 +2496,48 @@
                         itemsToSave = [data];
                     }
 
+                    // --- INÍCIO DA NOVA LÓGICA DE DEPENDÊNCIA ---
+                    const itemsComDependencia = itemsToSave.map(item => {
+                        const dependencies = new Set();
+
+                        // Verifica se é um Cabo (possui array 'points')
+                        if (item.points && Array.isArray(item.points)) {
+
+                            // Percorre todos os pontos do cabo
+                            item.points.forEach(point => {
+                                // O campo 'cd' nos pontos é o código do poste/equipamento
+                                if (point.cd && point.cd.startsWith('PT')) { // Filtra apenas por PT (poste)
+                                    dependencies.add(point.cd);
+                                }
+
+                                // O campo 'cd' no ponto 0 e no último ponto é crucial,
+                                // mas também os pontos intermediários podem ter.
+                                // Exemplo de estrutura aninhada: bType 2 (Poste)
+                                if (point.bType === 2 && point.cd) {
+                                    dependencies.add(point.cd);
+                                }
+                            });
+                        }
+
+                        // Retorna o item enriquecido com a lista de dependências
+                        return {
+                            ...item,
+                            dependencies: Array.from(dependencies) // Converte o Set para Array
+                        };
+                    });
+                    // --- FIM DA NOVA LÓGICA DE DEPENDÊNCIA ---
+
                     // Filtra por itens válidos (só salva se tiver os dados mínimos)
-                    const validItems = itemsToSave.filter(item => item.cd && item.cdCity);
+                    const validItems = itemsComDependencia.filter(item => item.cd && item.cdCity);
 
                     if (validItems.length > 0) {
                         // A SINTAXE CORRETA DO 'db.js':
-                        // Não precisamos de transações manuais!
-                        // O 'put' aceita um item ou um array de itens.
                         await cacheDB.geoItems.put(validItems);
-                        console.log(`[HUD Script - Cache] Salvo ${validItems.length} itens no 'geoItems'.`);
+                        console.log(`[HUD Script - Cache] Salvo ${validItems.length} itens (com dependências) no 'geoItems'.`);
                     }
                 } catch (e) {
-                    // O erro de 'transaction' não vai mais acontecer aqui
                     console.error(`[HUD Script - Cache] Erro ao salvar no 'geoItems':`, e);
                 }
-                // --- (FIM DA CORREÇÃO) ---
             }
         };
 
@@ -2582,7 +2609,7 @@
             }
             // --- (FIM DA MODIFICAÇÃO) ---
 
-            // --- (INÍCIO DA LÓGICA DO "LEITOR RÁPIDO") ---
+            // --- (INÍCIO DA LÓGICA DO "LEITOR RÁPIDO" - COM DEPENDÊNCIAS) ---
             const isFastLoadTrigger = xhr._url && xhr._url.includes("carregaItensCidades.php");
 
             if (xhr._method === 'POST' && isFastLoadTrigger && cacheDB) {
@@ -2592,42 +2619,70 @@
                     try {
                         const bodyParams = new URLSearchParams(body);
                         const cityCodes = bodyParams.getAll('json[]');
-                        const cityIDs = cityCodes.map(c => c.replace('CD', ''));
+                        const cityIDs = cityCodes.map(c => c.replace('CD', '')); // IDs numéricos
+                        const cityIdSet = new Set(cityIDs);
 
                         const gw = (typeof unsafeWindow !== 'undefined' ? unsafeWindow : window);
-                        // (Não precisamos mais criar o alerta aqui, pois o site já o faz)
 
                         console.log(`[HUD Script] Consultando cache para cidades: ${cityIDs.join(', ')}`);
 
-                        // 1. Pede TODOS os itens
+                        // 1. Pede TODOS os itens do cache
                         const allItems = await cacheDB.geoItems.query().all().execute();
 
                         console.log(`[HUD Script] ${allItems.length} itens lidos. Filtrando...`);
 
-                        // 2. Filtra em JavaScript
-                        const cityIdSet = new Set(cityIDs);
-                        const items = allItems.filter(item => {
+                        // --- ETAPA A: CARREGA ITENS PRINCIPAIS (da cidade selecionada) ---
+                        const primaryItems = allItems.filter(item => {
                             return cityIdSet.has(item.cdCity);
                         });
 
-                        console.log(`[HUD Script] Total de ${items.length} itens encontrados em ${cityIDs.length} cidades.`);
+                        // --- ETAPA B: BUSCA POR DEPENDÊNCIAS INTERCIDADE ---
 
-                        if (!items || items.length === 0) {
-                            console.warn("[HUD Script] Cache 'geoItems' vazio para estas cidades. Deixando a carga normal do site prosseguir.");
+                        const dependencyCodes = new Set();
+                        // 1. Coleta TODOS os códigos de dependência dos itens primários
+                        primaryItems.forEach(item => {
+                            (item.dependencies || []).forEach(depCode => {
+                                // Adiciona se o código de dependência NÃO for da cidade que já está sendo carregada (evita duplicação)
+                                const depCityMatch = depCode.match(/CD(\d+)/)?.[1] || '';
+                                if (!cityIdSet.has(depCityMatch)) {
+                                     dependencyCodes.add(depCode);
+                                }
+                            });
+                        });
+
+                        console.log(`[HUD Script] Encontradas ${dependencyCodes.size} dependências intercidade.`);
+
+                        // 2. Busca os itens de dependência no cache (ex: PT001_CD200)
+                        const dependentItems = allItems.filter(item => {
+                            // Verifica se o 'cd' do item (ex: PT001_CD200) está na nossa lista de dependências
+                            return dependencyCodes.has(item.cd);
+                        });
+
+                        // 3. Combina as listas e remove duplicatas
+                        const finalItemsMap = new Map();
+
+                        [...primaryItems, ...dependentItems].forEach(item => {
+                             finalItemsMap.set(item.cd, item);
+                        });
+
+                        const finalItems = Array.from(finalItemsMap.values());
+
+                        console.log(`[HUD Script] Total de ${finalItems.length} itens (cidade + dependências) encontrados.`);
+
+
+                        if (!finalItems || finalItems.length === 0) {
+                            console.warn("[HUD Script] Cache 'geoItems' vazio. Deixando a carga normal do site prosseguir.");
                             origSend.call(xhr, body);
                             return;
                         }
 
-                        // 3. A "PONTE": Envia os dados para o script injetado
-                        console.log(`[HUD Script] Cache 'geoItems' carregado. Enviando ${items.length} itens para a página...`);
+                        // 4. A "PONTE": Envia os dados para o script injetado
+                        console.log(`[HUD Script] Cache 'geoItems' carregado. Enviando ${finalItems.length} itens para a página...`);
                         document.dispatchEvent(new CustomEvent('hud:plotFast', {
-                            detail: { items: items }
+                            detail: { items: finalItems }
                         }));
 
-                        // --- (INÍCIO DA CORREÇÃO) ---
-                        // 4. ABORTA a requisição original
-                        // Não precisamos mais simular uma resposta. Apenas "matamos"
-                        // a chamada que o 'verificaCidades' fez.
+                        // 5. ABORTA a requisição original
                         console.log("[HUD Script] Abortando requisição XHR original.");
                         xhr.abort();
                         // --- (FIM DA CORREÇÃO) ---
