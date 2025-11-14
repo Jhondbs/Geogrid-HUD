@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Geogrid Tools
 // @namespace    http://tampermonkey.net/
-// @version      3.12
+// @version      3.13
 // @description  Adiciona um HUD com informações de clientes e atalhos no Geo Grid, ativado pela tecla "+" do Numpad.
 // @author       Jhon
 // @match        http://172.16.6.57/geogrid/aconcagua/*
@@ -497,10 +497,6 @@
             opacity: 0;
             transition: opacity 0.3s, top 0.3s;
         }
-        .hud-toast-notification.show {
-            opacity: 1;
-            top: 40px;
-        }
 
     `;
 
@@ -903,45 +899,61 @@
     // --- 2. FUNÇÕES AUXILIARES (HELPERS) ---
     // ... (restante das suas funções)
 
-    /** (NOVO) Referência global para o Toast de Progresso */
+    /** (CORREÇÃO FINAL) Referência global para o Toast de Progresso */
     let progressToastElement = null;
 
-    /** (NOVO) Mostra ou atualiza uma notificação toast de progresso */
+    /** * (CORRIGIDO E SIMPLIFICADO) Mostra ou atualiza uma notificação toast de progresso */
     function showHudToastProgress(message) {
         // 1. Remove qualquer toast de erro/sucesso existente
-        document.querySelector('.hud-toast-notification')?.remove();
+        document.querySelector('.hud-toast-notification:not(#hud-progress-toast)')?.remove();
 
         // 2. Se o elemento de progresso não existe, cria
         if (!progressToastElement) {
             progressToastElement = document.createElement('div');
+            progressToastElement.id = 'hud-progress-toast';
             progressToastElement.className = 'hud-toast-notification hud-element';
-            progressToastElement.style.backgroundColor = 'var(--hud-accent)'; // Cor de destaque
-            progressToastElement.style.top = '10px'; // Posiciona mais acima, longe do centro
-            progressToastElement.style.transition = 'none'; // Desativa a transição de entrada/saída
-            progressToastElement.style.opacity = '0'; // Começa invisível
-            document.body.appendChild(progressToastElement);
 
-            // Animação de entrada
-            setTimeout(() => {
-                 progressToastElement.style.transition = 'opacity 0.3s, top 0.3s';
-                 progressToastElement.classList.add('show');
-            }, 10);
+            // --- ESTILOS DE VISIBILIDADE IMEDIATA E Z-INDEX MÁXIMO ---
+            Object.assign(progressToastElement.style, {
+                backgroundColor: 'var(--hud-accent)',
+
+                // Posição Final (garantindo que ele está visível)
+                top: '40px',
+                opacity: '1', // Visibilidade imediata
+
+                // Garantias de Empilhamento e Posição
+                position: 'fixed',
+                zIndex: '2147483647', // MÁXIMO Z-INDEX
+
+                // Garante que a transição de entrada/saída é mantida
+                transition: 'opacity 0.3s, top 0.3s',
+
+                minWidth: '250px',
+                textAlign: 'center'
+            });
+
+            // 3. Anexa ao corpo. O Toast AGORA APARECE IMEDIATAMENTE (sem animação de entrada)
+            document.body.appendChild(progressToastElement);
         }
 
-        // 3. Atualiza a mensagem
+        // 4. Atualiza a mensagem
         progressToastElement.textContent = message;
     }
 
-    /** (NOVO) Remove o Toast de Progresso */
+    /** (CORRIGIDO E SIMPLIFICADO) Remove o Toast de Progresso */
     function hideHudToastProgress() {
         if (progressToastElement) {
-            // Animação de saída
-            progressToastElement.classList.remove('show');
-            // Remove o elemento após a animação
+            // Animação de saída manual
+
+            // 1. Inicia a animação de saída (muda opacidade e posição)
+            progressToastElement.style.opacity = '0';
+            progressToastElement.style.top = '10px'; // Move para fora
+
+            // 2. Remove o elemento após o tempo da transição
             setTimeout(() => {
                 progressToastElement?.remove();
                 progressToastElement = null; // Zera a referência
-            }, 300);
+            }, 300); // 300ms corresponde ao tempo da transição (transition: 0.3s)
         }
     }
 
@@ -2496,7 +2508,7 @@
                         itemsToSave = [data];
                     }
 
-                    // --- INÍCIO DA NOVA LÓGICA DE DEPENDÊNCIA ---
+                    // --- INÍCIO DA NOVA LÓGICA DE DEPENDÊNCIA (Manteve-se o que você validou) ---
                     const itemsComDependencia = itemsToSave.map(item => {
                         const dependencies = new Set();
 
@@ -2506,12 +2518,12 @@
                             // Percorre todos os pontos do cabo
                             item.points.forEach(point => {
                                 // O campo 'cd' nos pontos é o código do poste/equipamento
+
+                                // O SEU PROBLEMA: O PT10752 (poste) não é da cdCity 1204 e está aqui
                                 if (point.cd && point.cd.startsWith('PT')) { // Filtra apenas por PT (poste)
                                     dependencies.add(point.cd);
                                 }
 
-                                // O campo 'cd' no ponto 0 e no último ponto é crucial,
-                                // mas também os pontos intermediários podem ter.
                                 // Exemplo de estrutura aninhada: bType 2 (Poste)
                                 if (point.bType === 2 && point.cd) {
                                     dependencies.add(point.cd);
