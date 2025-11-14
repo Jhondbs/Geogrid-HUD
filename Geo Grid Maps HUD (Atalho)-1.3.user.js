@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Geogrid Tools
 // @namespace    http://tampermonkey.net/
-// @version      3.10
+// @version      3.11
 // @description  Adiciona um HUD com informações de clientes e atalhos no Geo Grid, ativado pela tecla "+" do Numpad.
 // @author       Jhon
 // @match        http://172.16.6.57/geogrid/aconcagua/*
@@ -597,7 +597,6 @@
                 // --- (INÍCIO DA OTIMIZAÇÃO v4.4: MONKEY-PATCHING) ---
                 window.__originalRetornaIndice__ = window.retornaIndice;
                 window.__originalCentraliza__ = window.centraliza;
-                window.__originalCriaAlerta__ = window.criaAlerta;
                 // --- (INÍCIO DA MODIFICAÇÃO - SYNC) ---
                 // Precisamos interceptar a função de plotagem do site
                 window.__originalPlotaItensNoMapa__ = window.plotaItensNoMapa;
@@ -617,33 +616,6 @@
                 window.centraliza = function() {
                     arrayCentralizar = [];
                     centerBag = new google.maps.LatLngBounds();
-                };
-
-                window.criaAlerta = function(tipo, acao, msg) {
-                    // Se NÃO for do tipo "carregando", apenas passe para a original.
-                    if (tipo !== "carregando") {
-                        return window.__originalCriaAlerta__(...arguments);
-                    }
-
-                    // Se for do tipo "carregando"
-                    if (acao === "ativa") {
-                        // O comportamento "ativa" (mostrar/atualizar) é sempre o mesmo.
-                        window.__originalCriaAlerta__("carregando", "cancela"); // Limpa o anterior
-                        window.__originalCriaAlerta__(tipo, acao, msg); // Mostra o novo
-                    } else if (acao === "cancela") {
-                        // Se for "cancela", SÓ ignora se o fast load estiver rodando.
-                        if (window.__hudFastLoadEmAndamento__ === true) {
-                            // Fast load está em andamento, ignora o "cancela"
-                            // (O fast load vai cancelar a si mesmo quando terminar)
-                        } else {
-                            // Não é o fast load (é o slow load / delta sync),
-                            // então DEIXA o "cancela" passar.
-                            window.__originalCriaAlerta__(tipo, acao, msg);
-                        }
-                    } else {
-                        // Outra ação desconhecida? Passa para a original.
-                        window.__originalCriaAlerta__(...arguments);
-                    }
                 };
 
                 // --- (INÍCIO DA MODIFICAÇÃO - SYNC) ---
@@ -689,15 +661,20 @@
                         window.__hudFastLoadEmAndamento__ = false;
                         console.log('%c[HUD Page Context] Carga Rápida concluída!', 'color: #98c379; font-weight: bold;');
 
-                        // Restaura funções nativas (exceto 'plotaItensNoMapa', que ainda precisamos)
+                        // --- CORREÇÃO: CANCELA O TOAST DE PROGRESSO ---
+                        document.dispatchEvent(new CustomEvent('hud:hideProgress'));
+
+                        // Restaura funções nativas (APENAS as que monkey-patchou)
                         window.retornaIndice = window.__originalRetornaIndice__;
                         window.centraliza = window.__originalCentraliza__;
-                        window.criaAlerta = window.__originalCriaAlerta__;
 
                         console.log('[HUD Page Context] Executando centralização final...');
-                        window.centraliza(); // Chama a função de verdade
+                        window.centraliza(); // Chama a função de verdade (original, que não faz mais nada)
 
-                        window.criaAlerta("carregando", "cancela"); // Limpa o alerta final
+                        // --- CORREÇÃO: CANCELA O ALERTA NATIVO (Por segurança, caso o site o tenha ativado) ---
+                        // Chamamos a função ORIGINAL, que agora é window.criaAlerta
+                        window.criaAlerta("carregando", "cancela");
+
 
                         // --- (INÍCIO DA MODIFICAÇÃO v2 - Robusta) ---
                         try {
@@ -721,7 +698,7 @@
                         }
                         // --- (FIM DA MODIFICAÇÃO v2) ---
 
-                        delete window.__hudIndiceRapido__;
+                        window.__hudIndiceRapido__ = {};
                         delete window.__hudFichasParaIndexar__;
                         return;
                     }
@@ -729,9 +706,11 @@
                     // Calcula o progresso da FASE 3
                     const processados = window.__hudTotalDeItensCarga__ - window.__hudFilaDeCarga__.length;
                     const percentual = Math.round((processados / window.__hudTotalDeItensCarga__) * 100);
-                    const msg = \`Carregando... (\${percentual}%) \${processados} / \${window.__hudTotalDeItensCarga__}\`;
+                    const msg = \`Carregando itens... (\${percentual}%) \${processados} / \${window.__hudTotalDeItensCarga__}\`;
 
-                    criaAlerta("carregando", "ativa", msg);
+                    // --- CORREÇÃO: ATUALIZA O TOAST DE PROGRESSO ---
+                    document.dispatchEvent(new CustomEvent('hud:showProgress', { detail: { message: msg } }));
+
                     carregados = lote;
                     plotaItensNoMapa(); // (AGORA CHAMA A NOSSA VERSÃO INTERCEPTADA)
                     setTimeout(processarLoteDeCarga, 0);
@@ -742,7 +721,7 @@
                  */
                 function construirIndice() {
                     console.time('[HUD Page Context] Fase 2: Construção do Índice');
-                    criaAlerta("carregando", "ativa", "Finalizando preparação do índice...");
+                    document.dispatchEvent(new CustomEvent('hud:showProgress', { detail: { message: "Finalizando preparação do índice..." } }));
 
                     for (const ficha of window.__hudFichasParaIndexar__) {
                         if (!window.__hudIndiceRapido__[ficha]) {
@@ -777,7 +756,7 @@
                     const percentual = Math.round((processados / window.__hudTotalDeItensPreparo__) * 100);
                     const msg = \`Preparando dados... (\${percentual}%) \${processados} / \${window.__hudTotalDeItensPreparo__}\`;
 
-                    criaAlerta("carregando", "ativa", msg);
+                    document.dispatchEvent(new CustomEvent('hud:showProgress', { detail: { message: msg } }));
 
                     // Processa o lote
                     for (const item of lote) {
@@ -819,7 +798,13 @@
                         window.__hudFilaDePreparo__ = items;
                         window.__hudTotalDeItensPreparo__ = items.length;
                         window.__hudFilaDeCarga__ = [];
-                        window.__hudFichasParaIndexar__.clear();
+
+                        if (window.__hudFichasParaIndexar__ && typeof window.__hudFichasParaIndexar__.clear === 'function') {
+                            window.__hudFichasParaIndexar__.clear();
+                        } else {
+                            // Se foi deletado ou nunca existiu
+                            window.__hudFichasParaIndexar__ = new Set();
+                        }
 
                         processarLoteDePreparo();
 
@@ -912,6 +897,51 @@
         const mm = String(today.getMonth() + 1).padStart(2, '0'); // Meses são 0-indexados
         const dd = String(today.getDate()).padStart(2, '0');
         return `${yyyy}-${mm}-${dd}`;
+    }
+
+    // --- 2. FUNÇÕES AUXILIARES (HELPERS) ---
+    // ... (restante das suas funções)
+
+    /** (NOVO) Referência global para o Toast de Progresso */
+    let progressToastElement = null;
+
+    /** (NOVO) Mostra ou atualiza uma notificação toast de progresso */
+    function showHudToastProgress(message) {
+        // 1. Remove qualquer toast de erro/sucesso existente
+        document.querySelector('.hud-toast-notification')?.remove();
+
+        // 2. Se o elemento de progresso não existe, cria
+        if (!progressToastElement) {
+            progressToastElement = document.createElement('div');
+            progressToastElement.className = 'hud-toast-notification hud-element';
+            progressToastElement.style.backgroundColor = 'var(--hud-accent)'; // Cor de destaque
+            progressToastElement.style.top = '10px'; // Posiciona mais acima, longe do centro
+            progressToastElement.style.transition = 'none'; // Desativa a transição de entrada/saída
+            progressToastElement.style.opacity = '0'; // Começa invisível
+            document.body.appendChild(progressToastElement);
+
+            // Animação de entrada
+            setTimeout(() => {
+                 progressToastElement.style.transition = 'opacity 0.3s, top 0.3s';
+                 progressToastElement.classList.add('show');
+            }, 10);
+        }
+
+        // 3. Atualiza a mensagem
+        progressToastElement.textContent = message;
+    }
+
+    /** (NOVO) Remove o Toast de Progresso */
+    function hideHudToastProgress() {
+        if (progressToastElement) {
+            // Animação de saída
+            progressToastElement.classList.remove('show');
+            // Remove o elemento após a animação
+            setTimeout(() => {
+                progressToastElement?.remove();
+                progressToastElement = null; // Zera a referência
+            }, 300);
+        }
     }
 
     /** (NOVO) Mostra uma notificação toast personalizada */
@@ -4129,6 +4159,15 @@ function patchRemoverCliente(gw) {
         iniciarListenerDePesquisaRapida();
         iniciarListenerAdicionarEquipamento();
         iniciarInjecaoDiagramaV2();
+
+        // 4. LISTENERS DA PONTE (Custom Events)
+        document.addEventListener('hud:showProgress', (e) => {
+            showHudToastProgress(e.detail.message);
+        });
+
+        document.addEventListener('hud:hideProgress', () => {
+            hideHudToastProgress();
+        });
 
         console.log("[HUD Script] Todos os listeners iniciados.");
     }
