@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Geogrid Tools
 // @namespace    http://tampermonkey.net/
-// @version      3.9
+// @version      3.10
 // @description  Adiciona um HUD com informações de clientes e atalhos no Geo Grid, ativado pela tecla "+" do Numpad.
 // @author       Jhon
 // @match        http://172.16.6.57/geogrid/aconcagua/*
@@ -667,26 +667,6 @@
                             networkIDs.size
                         );
 
-                        // Compara: Itens do Cache vs. Itens da Rede
-                        for (const cachedID of window.__hudCachePlottedIDs__) {
-                            // Se um item do cache NÃO veio na lista da rede...
-                            if (!networkIDs.has(cachedID)) {
-                                // ...significa que foi excluído. Removemos o "zumbi".
-                                try {
-                                    const ficha = retornaFicha(cachedID);
-                                    // Usamos o __originalRetornaIndice__ para segurança
-                                    const indice = window.__originalRetornaIndice__(ficha, cachedID);
-
-                                    if (indice > -1) {
-                                        console.log(\`[HUD Page Context] Sincronizando exclusão: \${cachedID} (Ficha: \${ficha}, Indice: \${indice})\`);
-                                        // 'removerItem' é uma função nativa do GeoGrid
-                                        removerItem(ficha, indice, cachedID);
-                                    }
-                                } catch (e) {
-                                    console.warn(\`[HUD Page Context] Falha ao tentar remover item \${cachedID}\`, e);
-                                }
-                            }
-                        }
                         // Limpa o set de cache, o trabalho está feito
                         window.__hudCachePlottedIDs__.clear();
                     }
