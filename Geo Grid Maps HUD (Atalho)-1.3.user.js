@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Geogrid Tools
 // @namespace    http://tampermonkey.net/
-// @version      3.13
+// @version      4.0
 // @description  Adiciona um HUD com informações de clientes e atalhos no Geo Grid, ativado pela tecla "+" do Numpad.
 // @author       Jhon
 // @match        http://172.16.6.57/geogrid/aconcagua/*
@@ -18,13 +18,24 @@
 
     // ÍCONES SVG
     const ICONS = {
-        search: `<svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>`, // <-- ADICIONE ESTA LINHA
+        search: `<svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>`,
         notes: `<svg viewBox="0 0 24 24"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>`,
         copy: `<svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>`,
         settings: `<svg viewBox="0 0 24 24"><path d="M19.43 12.98c.04-.32.07-.64.07-.98s-.03-.66-.07-.98l2.11-1.65c.19-.15.24-.42.12-.64l-2-3.46c-.12-.22-.39-.3-.61-.22l-2.49 1c-.52-.4-1.08-.73-1.69-.98l-.38-2.65C14.46 2.18 14.25 2 14 2h-4c-.25 0-.46.18-.49-.42l-.38 2.65c-.61-.25-1.17-.59-1.69-.98l-2.49-1c-.23-.09-.49 0-.61.22l-2 3.46c-.13.22-.07.49.12.64l2.11 1.65c-.04.32-.07.65-.07.98s.03.66.07.98l-2.11 1.65c-.19.15-.24-.42-.12-.64l2 3.46c.12.22.39.3.61.22l2.49-1c.52.4 1.08.73 1.69-.98l.38 2.65c.03.24.24.42.49.42h4c.25 0 .46-.18.49-.42l.38-2.65c.61-.25 1.17-.59-1.69-.98l2.49 1c.23.09.49 0 .61-.22l2-3.46c.12-.22.07-.49-.12-.64l-2.11-1.65zM12 15.5c-1.93 0-3.5-1.57-3.5-3.5s1.57-3.5 3.5-3.5 3.5 1.57 3.5 3.5-1.57 3.5-3.5 3.5z"/></svg>`,
         map: `<svg viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>`,
-        crosshair: `<svg viewBox="0 0 24 24"><path d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm0 6c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z"/><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2"/></svg>`
+        crosshair: `<svg viewBox="0 0 24 24"><path d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm0 6c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z"/><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2"/></svg>`,
+        // NOVO: Ícone Wi-Fi (para o botão de verificação de status)
+        wifi: `<svg viewBox="0 0 24 24"><path d="M1 9l2 2c4.4-4.4 11.6-4.4 16 0l2-2C16.8-2.8 7.2-2.8 1 9zm8 8l3 3 3-3c-1.6-1.6-4.4-1.6-6 0zm-4-4l2 2c2.2-2.2 5.8-2.2 8 0l2-2c-3.3-3.3-8.7-3.3-12 0z"/></svg>`,
+        signal: `<svg viewBox="0 0 24 24"><path d="M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9 9-4.03 9-9-4.03-9-9-9zm0 16c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7zm-1.5-6h3V8h-3v5z"/></svg>`
     };
+
+    // NOVO: URLs da API do Sinal
+    const JUPITER_API_URL_SEARCH = "https://viaradio.jupiter.com.br/painel.php";
+    const JUPITER_API_URL_ONUS = "https://viaradio.jupiter.com.br/api/view/ONUS/retornarONUSJSON";
+    const JUPITER_API_URL_SIGNAL = "https://viaradio.jupiter.com.br/api/view/OLT/retornarNivelDeSinal";
+
+    // NOVO: Variável de controle para o cancelamento
+    let sinalSearchController = null;
 
     // LÓGICA DE CONFIGURAÇÕES (LocalStorage)
     const STORAGE_KEY = "geoGridHudSettings";
@@ -39,6 +50,8 @@
         abrirNovaGuia: false,
         destacarRedesDivergentes: true,
         copiarStatus: true,
+        exibirInfoDiagrama: false,
+        // REMOVIDO: exibirInfoDiagrama (para manter o comportamento da v3.13)
     };
 
     // ESTILOS (CSS)
@@ -167,7 +180,7 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            transition: background-color 0.2s, color 0.2s;
+            transition: background-color 0.2s, color 0.2s, opacity 0.2s; /* Adicionado opacity */
             width: 30px;
             height: 30px;
         }
@@ -206,6 +219,8 @@
         .hud-client-row .status-CANCELADO { color: var(--hud-red); }
         .hud-client-row .status-SUSPENSO { color: var(--hud-orange); }
         .hud-client-row .status-NAO-IDENTIFICADO { color: var(--hud-text); }
+        /* NOVO: Estilo para o status Ativo/Offline */
+        .hud-client-row .status-ATIVO-OFFLINE { color: #993399; }
         .hud-client-row.network-divergent { background-color: rgba(224, 108, 117, 0.2); }
         .hud-network-header { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--hud-border); }
         .hud-network-header strong { color: var(--hud-accent); }
@@ -496,6 +511,36 @@
             z-index: 2147483647; /* Máximo z-index */
             opacity: 0;
             transition: opacity 0.3s, top 0.3s;
+        }
+        /* NOVO: Botão de Sinal Pequeno (na linha da rede) */
+        .hud-btn-small {
+            background: transparent;
+            border: 1px solid var(--hud-border);
+            color: var(--hud-text);
+            padding: 2px 6px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 11px;
+            margin-left: 10px;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            transition: all 0.2s;
+            vertical-align: middle;
+        }
+        .hud-btn-small:hover {
+            background-color: var(--hud-accent);
+            color: white;
+            border-color: var(--hud-accent);
+        }
+        .hud-btn-small svg {
+            width: 12px;
+            height: 12px;
+            fill: currentColor;
+        }
+        .hud-btn-small:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
         }
 
     `;
@@ -896,8 +941,408 @@
         return `${yyyy}-${mm}-${dd}`;
     }
 
-    // --- 2. FUNÇÕES AUXILIARES (HELPERS) ---
-    // ... (restante das suas funções)
+    // URL da API externa para verificar a conectividade do cliente (Mantida da v3.15)
+    const JUPITER_API_URL = "https://viaradio.jupiter.com.br/buscarclienteoutrosdados.php";
+    // Regex para extrair o status Online/Offline do HTML de resposta (Mantida da v3.15)
+    const STATUS_REGEX = /<font\s+color="(?:green|red)">(Online|Offline)<\/font>/i;
+
+    /**
+     * (Mantida da v3.15) Busca o status de conectividade do cliente ativo na API externa.
+     * @param {string} idGlobal O ID global do cliente.
+     * @returns {Promise<string>} O status ("Online", "Offline", "N/A - Sem Login" ou "Erro API").
+     */
+    function buscarStatusCliente(idGlobal) {
+        return new Promise((resolve) => {
+            console.log(`[HUD Status] Buscando conectividade para ID: ${idGlobal}`);
+
+            // ⚠️ O GM_xmlhttpRequest é crucial para contornar o CORS
+            GM_xmlhttpRequest({
+                method: "GET",
+                url: `${JUPITER_API_URL}?id_global=${idGlobal}`,
+
+                onload: function(response) {
+                    try {
+                        const html = response.responseText;
+                        const match = html.match(STATUS_REGEX);
+
+                        if (match && match[1]) {
+                            const status = match[1].trim();
+                            console.log(`[HUD Status] ID ${idGlobal}: Status Encontrado: ${status}`);
+                            resolve(status); // Retorna "Online" ou "Offline"
+                        } else {
+                            // Este é o cenário mais comum quando o cliente é ativo mas não tem
+                            // um usuário configurado/logado na tabela, ou o HTML mudou.
+                            console.warn(`[HUD Status] ID ${idGlobal}: Status não encontrado na tabela de Usuários.`);
+                            resolve("N/A - Sem Login");
+                        }
+                    } catch (e) {
+                        console.error(`[HUD Status] ERRO DE PARSING para ID ${idGlobal}:`, e);
+                        resolve("Erro API");
+                    }
+                },
+
+                onerror: function(error) {
+                    // Erro de rede ou servidor
+                    console.error(`[HUD Status] ERRO DE REDE/CONEXÃO para ID ${idGlobal} (HTTP ${error.status}):`, error);
+                    resolve("Erro API");
+                },
+
+                ontimeout: function() {
+                    console.error(`[HUD Status] ERRO DE TIMEOUT para ID ${idGlobal}.`);
+                    resolve("Erro API");
+                }
+            });
+        });
+    }
+
+    // --- LÓGICA DO BOTÃO WI-FI (NOVO) ---
+
+    // --- LÓGICA DO BOTÃO WI-FI (MANTIDA DA V3.16) ---
+
+    /**
+     * (Mantida da v3.16) Dispara a busca de status para todos os clientes ativos.
+     */
+    async function verificarStatusClientes() {
+        // Encontra e desativa o botão enquanto a busca estiver em andamento
+        const btnWifi = document.getElementById('verificarWifiBtn');
+        if (btnWifi) {
+            btnWifi.disabled = true;
+            btnWifi.style.opacity = '0.5';
+            btnWifi.title = 'Verificando...';
+        }
+
+        const idsParaConsultar = Object.values(infoClientes)
+            .filter(c => c.data.registro?.nome.includes('ATIVO')) // Filtra apenas ATIVOS
+            .map(c => c.id);
+
+        if (idsParaConsultar.length === 0) {
+            showHudToast("Nenhum cliente ativo para verificar.", 'warning');
+            if (btnWifi) {
+                 btnWifi.disabled = false;
+                 btnWifi.style.opacity = '1';
+                 btnWifi.title = 'Verificar Status Wi-Fi';
+            }
+            return;
+        }
+
+        let consultas = [];
+        let clientesConsultados = 0;
+
+        for (const idCliente of idsParaConsultar) {
+            const consulta = buscarStatusCliente(idCliente).then(statusConexao => {
+                clientesConsultados++;
+                // 1. Atualiza o estado global com o novo status
+                infoClientes[idCliente].statusConexao = statusConexao;
+
+                // 2. Atualiza o toast de progresso
+                const msg = `Verificando conectividade... ${clientesConsultados}/${idsParaConsultar.length}`;
+                showHudToastProgress(msg);
+
+                return { id: idCliente, status: statusConexao };
+            }).catch(e => {
+                clientesConsultados++;
+                infoClientes[idCliente].statusConexao = "Erro API";
+                return { id: idCliente, status: "Erro API" };
+            });
+            consultas.push(consulta);
+        }
+
+        // Exibe o progresso inicial
+        showHudToastProgress(`Verificando conectividade... 0/${idsParaConsultar.length}`);
+
+        try {
+            await Promise.all(consultas);
+
+            // 3. Finaliza a busca e atualiza a HUD
+            hideHudToastProgress(); // Remove o toast de progresso
+
+            // Chama a função que redesenha a lista
+            finalizarHud();
+
+            showHudToast(`Status de ${idsParaConsultar.length} clientes atualizado.`, 'success');
+
+        } catch (e) {
+            console.error("[HUD Status] Erro ao aguardar consultas:", e);
+            showHudToast("Erro na verificação de status. Verifique o console.", 'error');
+        } finally {
+            // Reativa o botão
+            if (btnWifi) {
+                 btnWifi.disabled = false;
+                 btnWifi.style.opacity = '1';
+                 btnWifi.title = 'Verificar Status Wi-Fi';
+            }
+        }
+    }
+
+// --- NOVO: LÓGICA DO BOTÃO "SINAL" ---
+
+/**
+ * (ATUALIZADO v3.20 - Busca Segura em Gerenciar Usuários)
+ * 1. Busca na página 'gerenciarusuarios'.
+ * 2. Lê a tabela HTML (DOM Parser).
+ * 3. Valida o nome do cliente para evitar cidade errada.
+ * 4. Pega o atributo 'onu="XXXX"'.
+ */
+async function buscarSinal(idCliente, controller) {
+    if (controller.signal.aborted) return { sinal: "Cancelado" };
+
+    // --- PREPARAÇÃO DOS DADOS DO GEOGRID ---
+    const dadosGeoGrid = infoClientes[idCliente]?.data?.registro;
+    let contrato = "";
+    let nomeGeoGrid = "";
+
+    if (dadosGeoGrid && dadosGeoGrid.nome) {
+        // Ex: "JPT - 6048 - COLÔNIA DE PESCADORES"
+        const partes = dadosGeoGrid.nome.split(" - ");
+
+        if (partes.length >= 2) {
+            contrato = partes[1].trim();
+            // Pega o resto do nome após o contrato
+            nomeGeoGrid = partes.slice(2).join(" - ").trim();
+        } else {
+            nomeGeoGrid = dadosGeoGrid.nome; // Fallback
+        }
+    }
+
+    // Validação básica de contrato numérico
+    if (!contrato || !/^\d+$/.test(contrato)) {
+        return { sinal: "S/ Contrato" };
+    }
+
+    // Função auxiliar para limpar strings (remove acentos e deixa maiúsculo)
+    const limparTexto = (txt) => txt ? txt.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim() : "";
+    const nomeGeoGridLimpo = limparTexto(nomeGeoGrid);
+
+    // Pega as 2 primeiras palavras para comparação flexível (ex: "COLONIA DE")
+    const termosBusca = nomeGeoGridLimpo.split(" ").slice(0, 2);
+
+    try {
+        // --- PASSO 1: BUSCAR NA PÁGINA DE GERENCIAR USUÁRIOS ---
+        showHudToastProgress(`Sinal: Validando contrato ${contrato}...`);
+
+        // URL baseada na sua descoberta
+        const searchUrl = `${JUPITER_API_URL_SEARCH}?adm=gerenciarusuarios&np=5&p=1&t=&valorbusca=${contrato}&tipo=2`;
+
+        const responseSearch = await new Promise((resolve, reject) => {
+            GM_xmlhttpRequest({
+                method: "GET",
+                url: searchUrl,
+                timeout: 20000,
+                anonymous: false, // Usa cookies da sessão ativa
+                onload: resolve,
+                onerror: reject,
+                ontimeout: reject,
+            });
+        });
+
+        // --- PASSO 2: PARSE DO HTML (Leitura da Tabela) ---
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(responseSearch.responseText, "text/html");
+
+        // Procura por todas as linhas (tr) que tenham o atributo 'onu'
+        // Ex: <tr fibra="true" onu="15339">
+        const linhasTabela = doc.querySelectorAll('tr[onu]');
+
+        let idOnuEncontrado = null;
+
+        for (const linha of linhasTabela) {
+            const textoLinha = limparTexto(linha.textContent || linha.innerText);
+
+            // Verifica se TODOS os termos principais do nome do GeoGrid estão na linha do Viaradio
+            const nomeBate = termosBusca.every(termo => textoLinha.includes(termo));
+
+            if (nomeBate) {
+                idOnuEncontrado = linha.getAttribute('onu');
+                break; // Achou o correto, para o loop
+            }
+        }
+
+        if (!idOnuEncontrado) {
+            // Se achou linhas na tabela (contrato existe), mas o nome não bateu:
+            if (linhasTabela.length > 0) {
+                console.warn(`[HUD Sinal] Contrato ${contrato} encontrado, mas o nome não bateu com "${nomeGeoGrid}". Possível cidade trocada.`);
+                return { sinal: "Selecione o sistema correto no Viaradio" };
+            }
+            // Se o HTML contiver campos de login, a sessão caiu
+            if (responseSearch.responseText.includes("name=\"login\"") || responseSearch.responseText.includes("name=\"senha\"")) {
+                 return { sinal: "Fazer Login" };
+            }
+            return { sinal: "Não Encontrado" };
+        }
+
+        if (controller.signal.aborted) return { sinal: "Cancelado" };
+
+        // --- PASSO 3: BUSCAR DADOS TÉCNICOS (ONUS) ---
+        showHudToastProgress(`Sinal: Obtendo dados técnicos...`);
+
+        const responseOnus = await new Promise((resolve, reject) => {
+            GM_xmlhttpRequest({
+                method: "GET",
+                url: `${JUPITER_API_URL_ONUS}?id=${idOnuEncontrado}`,
+                timeout: 15000,
+                anonymous: false,
+                onload: resolve,
+                onerror: reject,
+                ontimeout: reject,
+            });
+        });
+
+        let jsonOnus;
+        try {
+            jsonOnus = JSON.parse(responseOnus.responseText);
+        } catch (e) {
+            return { sinal: "Erro JSON" };
+        }
+
+        if (jsonOnus.success !== "1" || !jsonOnus.onus || jsonOnus.onus.length === 0) {
+            return { sinal: "Sem Dados ONU" };
+        }
+
+        const dadosOnus = jsonOnus.onus[0];
+
+        if (controller.signal.aborted) return { sinal: "Cancelado" };
+
+        // --- PASSO 4: MEDIR O SINAL ---
+        showHudToastProgress(`Sinal: Medindo dBm...`);
+
+        const params = new URLSearchParams();
+        for (const key in dadosOnus) {
+            params.append(key, dadosOnus[key]);
+        }
+        // Garante o ID correto na chamada final
+        if(!params.has('id')) params.append('id', idOnuEncontrado);
+
+        const responseSignal = await new Promise((resolve, reject) => {
+            GM_xmlhttpRequest({
+                method: "GET",
+                url: `${JUPITER_API_URL_SIGNAL}?${params.toString()}`,
+                timeout: 60000, // Timeout maior para leitura de sinal
+                anonymous: false,
+                onload: resolve,
+                onerror: reject,
+                ontimeout: reject,
+            });
+        });
+
+        let jsonSignal;
+        try {
+            jsonSignal = JSON.parse(responseSignal.responseText);
+        } catch (e) {
+             return { sinal: "Erro API" };
+        }
+
+        if (jsonSignal.status !== "1") {
+            return { sinal: "Sem Leitura" };
+        }
+
+        const sinal = jsonSignal.sinal || "N/A";
+        return { sinal };
+
+    } catch (e) {
+        if (e.name === 'AbortError' || controller.signal.aborted) {
+            return { sinal: "Cancelado" };
+        }
+        console.error(`[HUD Sinal] Erro Crítico:`, e);
+        return { sinal: "Erro Crítico" };
+    }
+}
+
+/**
+ * (ATUALIZADO v3.23 - Correção de Crash no Cancelamento)
+ * Usa referência local do controller para evitar erro de 'null' em promises pendentes.
+ */
+async function verificarNivelDeSinal(idsParaConsultar, btnElement) {
+    // --- LÓGICA DE CANCELAMENTO (GLOBAL) ---
+    if (sinalSearchController) {
+        sinalSearchController.abort();
+        sinalSearchController = null;
+        showHudToast("Pesquisa interrompida.", 'warning');
+
+        // Reseta visualmente
+        document.querySelectorAll('.hud-btn-small').forEach(btn => {
+            btn.textContent = 'Sinal';
+            btn.disabled = false;
+            delete btn.dataset.searching;
+        });
+
+        hideHudToastProgress();
+        return;
+    }
+
+    if (!idsParaConsultar || idsParaConsultar.length === 0) {
+        showHudToast("Nenhum cliente ativo nesta rede.", 'warning');
+        return;
+    }
+
+    // --- PREPARAÇÃO ---
+    // Cria o controlador e guarda numa constante LOCAL
+    // Isso impede que o código quebre se a variável global for zerada
+    const currentController = new AbortController();
+    sinalSearchController = currentController; // Atualiza a global
+
+    if (btnElement) {
+        btnElement.textContent = 'Cancelar';
+        btnElement.dataset.searching = "true";
+    }
+
+    let clientesConsultados = 0;
+    let sinalPromises = [];
+
+    showHudToastProgress(`Sinal: Iniciando busca na rede... 0/${idsParaConsultar.length}`);
+
+    for (const idCliente of idsParaConsultar) {
+        // Verifica a referência local, que nunca será null dentro deste escopo
+        if (currentController.signal.aborted) break;
+
+        const consulta = buscarSinal(idCliente, currentController).then(resultado => {
+            // Se foi cancelado, não atualiza mais nada (evita toast fantasma)
+            if (currentController.signal.aborted) return;
+
+            clientesConsultados++;
+
+            if (infoClientes[idCliente]) {
+                infoClientes[idCliente].nivelSinal = resultado.sinal;
+            }
+
+            const msg = `Sinal: Processando... ${clientesConsultados}/${idsParaConsultar.length}`;
+            showHudToastProgress(msg);
+
+            return resultado;
+        }).catch(e => {
+            // Se foi cancelado, ignora o erro silenciosamente
+            if (currentController.signal.aborted) return;
+
+            clientesConsultados++;
+            infoClientes[idCliente].nivelSinal = "Erro API";
+            return { sinal: "Erro API" };
+        });
+        sinalPromises.push(consulta);
+    }
+
+    // Aguarda todas as chamadas terminarem (ou serem canceladas)
+    await Promise.all(sinalPromises.map(p => p.catch(e => null)));
+
+    // --- FINALIZAÇÃO ---
+    // Verifica se ESTA execução específica foi abortada
+    if (!currentController.signal.aborted) {
+        hideHudToastProgress();
+        finalizarHud();
+        showHudToast(`Verificação da rede concluída.`, 'success');
+
+        // Limpeza de sucesso
+        sinalSearchController = null;
+        if (btnElement) {
+            btnElement.textContent = 'Sinal';
+            delete btnElement.dataset.searching;
+            btnElement.disabled = false;
+        }
+    } else {
+        // Se foi abortada, garantimos que o toast de progresso suma
+        hideHudToastProgress();
+    }
+}
+
+    // --- FIM DA LÓGICA DO BOTÃO WI-FI ---
 
     /** (CORREÇÃO FINAL) Referência global para o Toast de Progresso */
     let progressToastElement = null;
@@ -969,6 +1414,8 @@
         // (Opcional: mudar a cor com base no tipo)
         if (type === 'success') {
             toast.style.backgroundColor = 'var(--hud-green)';
+        } else if (type === 'warning') {
+            toast.style.backgroundColor = 'var(--hud-orange)';
         } else {
             toast.style.backgroundColor = 'var(--hud-red)';
         }
@@ -977,12 +1424,14 @@
 
         // Animação de entrada
         setTimeout(() => {
-            toast.classList.add('show');
+            toast.style.opacity = '1';
+            toast.style.top = '20px'; // Desce para a posição final
         }, 10);
 
         // Animação de saída
         setTimeout(() => {
-            toast.classList.remove('show');
+            toast.style.opacity = '0';
+            toast.style.top = '10px';
             // Remove o elemento após a animação
             setTimeout(() => {
                 toast.remove();
@@ -1436,13 +1885,17 @@
         }
 
         // ORDEM DOS BOTÕES ATUALIZADA
+
         const btnPesquisa = createButton('pesquisaBtn', ICONS.search, 'Ocultar/Exibir Pesquisa');
+        const btnWifi = createButton('verificarWifiBtn', ICONS.wifi, 'Verificar Conectividade');
+        // NOVO BOTÃO DE SINAL > Migrado pra ao lado do nome das redes
+        //const btnSignal = createButton('verificarSignalBtn', ICONS.signal, 'Verificar Nível de Sinal');
+
         const expandirBtn = createButton('expandirBtn', ICONS.notes, 'Anotações');
         const btnCopiar = createButton('copiarContratosBtn', ICONS.copy, 'Copiar Contratos');
         const btnConfig = createButton('configBtn', ICONS.settings, 'Configurações');
-        const btnMapa = createButton('abrirMapaBtn', ICONS.map, 'Localização do Poste');
-
-        const btnCaptura = createButton('capturaMapaBtn', ICONS.crosshair, 'Capturar Coordenadas do Mapa (Ativa/Desativa)');
+        const btnMapa = createButton('abrirMapaBtn', ICONS.map, 'Localização dessa Caixa');
+        const btnCaptura = createButton('capturaMapaBtn', ICONS.crosshair, 'Capturar Coordenadas do Mapa');
 
         const btnFechar = document.createElement("button");
         btnFechar.className = 'hud-btn-close';
@@ -1567,6 +2020,16 @@
         // Define o estado inicial do botão de pesquisa
         btnPesquisa.classList.toggle('active', state.searchBarVisible);
 
+        // (NOVO) Botão Wi-Fi
+        btnWifi.addEventListener("click", () => {
+             verificarStatusClientes();
+        });
+
+        // NOVO: Botão Sinal > migrado pra ao lado do nome das redes
+        //btnSignal.addEventListener("click", () => {
+        //     verificarNivelDeSinal();
+        //});
+
         // (Existente) Botão Fechar
         btnFechar.addEventListener("click", removerHUD);
 
@@ -1648,6 +2111,17 @@
             ));
 
             content.appendChild(createCheckbox(
+                'exibirInfoDiagrama',
+                'Informações no GeoGrid (Contrato/Rede)',
+                state.exibirInfoDiagrama,
+                val => {
+                    state.exibirInfoDiagrama = val;
+                    // Se o usuário ativar/desativar, sugerimos um recarregamento
+                    showHudToast(`Alteração aplicada. Recarregue a página (F5) para ver o efeito no diagrama.`, 'warning');
+                }
+            ));
+
+            content.appendChild(createCheckbox(
                 'removerIndesejado',
                 'Ocultar topo e rodapé do site',
                 state.removerIndesejado,
@@ -1723,8 +2197,6 @@
 
             // --- Grupo 4: Cache de Dados ---
             content.appendChild(createSettingsHeader("Cache de Carregamento"));
-
-            // --- (INÍCIO DA MODIFICAÇÃO) ---
 
             // Container para os botões de Importar/Exportar/Limpar
             const cacheButtonsContainer = document.createElement('div');
@@ -1919,8 +2391,6 @@
             // Adiciona o container (com os 3 botões) ao painel de configurações
             content.appendChild(cacheButtonsContainer);
 
-            // --- (FIM DA MODIFICAÇÃO) ---
-
             // --- Cria o painel ---
             createDraggablePanel('blocoPredefinicoesHUD', 'Predefinições', content, {
                 top: mainPanelRect.top,
@@ -1963,7 +2433,18 @@
 
                     if (state.copiarStatus && contrato !== "Cliente Desconhecido") {
                         let statusCliente = textoCompleto.match(/\((ATIVO|CANCELADO|SUSPENSO|NAO IDENTIFICADO)\)/i);
-                        textoParaCopiar += ` (${statusCliente ? statusCliente[1] : "NAO IDENTIFICADO"})`;
+                        // Verifica se existe a nova propriedade 'statusConexao'
+                        const statusConexao = infoClientes[c.id]?.statusConexao;
+                        let statusFinal = statusCliente ? statusCliente[1] : "NAO IDENTIFICADO";
+
+                        // Adiciona o status Offline/Online se tiver sido verificado
+                        if (statusFinal === 'ATIVO' && statusConexao === 'Offline') {
+                           statusFinal = 'ATIVO-OFFLINE';
+                        } else if (statusFinal === 'ATIVO' && statusConexao === 'Online') {
+                           statusFinal = 'ATIVO-ONLINE';
+                        }
+
+                        textoParaCopiar += ` (${statusFinal.replace('-', ' ')})`;
                     }
 
                     if (state.copiarNomeRede) {
@@ -1997,13 +2478,15 @@
         state.searchQuery = ''; // Limpa a pesquisa
         hudUserInteracted = false;
 
-        // NÃO limpa ultimoCodigoEquipamentoPai
-        // NÃO limpa ultimoCodigoPoste
+        if (sinalSearchController) {
+             sinalSearchController.abort();
+             sinalSearchController = null;
+        }
     }
 
-    /**
+/**
      * Desenha os dados coletados dentro do painel do HUD.
-     * (VERSÃO MODIFICADA - INCLUI BARRA DE PESQUISA)
+     * (VERSÃO CORRIGIDA v3.22 - Botão de Sinal na Rede + Lista de Clientes Restaurada)
      */
     function finalizarHud() {
         // Encontra os elementos do HUD
@@ -2018,29 +2501,24 @@
 
         conteudoDiv.innerHTML = ""; // Limpa o conteúdo
 
-        // --- ADICIONAR BARRA DE PESQUISA (NOVO) ---
+        // --- ADICIONAR BARRA DE PESQUISA ---
         const searchBar = document.createElement('div');
         searchBar.className = 'hud-search-bar';
-
         searchBar.style.display = state.searchBarVisible ? 'block' : 'none';
-
         const searchInput = document.createElement('input');
         searchInput.type = 'text';
         searchInput.id = 'hud-search-field';
         searchInput.className = 'hud-search-input';
         searchInput.placeholder = 'Pesquisar contrato (só números)...';
-        searchInput.value = state.searchQuery || ''; // Restaura o valor da pesquisa anterior
-
-        // 1. Filtro de "só números" e 2. Acionador da pesquisa
+        searchInput.value = state.searchQuery || '';
         searchInput.oninput = (e) => {
-            e.target.value = e.target.value.replace(/\D/g, ''); // Remove não-números
-            debouncedSearch(); // Chama a pesquisa com "debounce"
+            e.target.value = e.target.value.replace(/\D/g, '');
+            debouncedSearch();
         };
-
         searchBar.appendChild(searchInput);
         conteudoDiv.appendChild(searchBar);
-        // --- FIM DA BARRA DE PESQUISA ---
 
+        // Normalização de nomes
         const normalizarRede = nome => nome ? nome.replace(/^\d+\s*-\s*/, "").trim().toLowerCase() : "";
         const capitalizarRede = nome => nome.replace(/\b\w/g, l => l.toUpperCase());
         const todasRedesNorm = [...new Set(Object.values(equipamentosInfo).map(e => e.nomeRede))]
@@ -2052,6 +2530,7 @@
             ordemFinal.unshift('__porDemanda__');
         }
 
+        // --- LOOP PRINCIPAL: Equipamentos/Redes ---
         ordemFinal.forEach(equipId => {
             const equipamento = equipamentosInfo[equipId];
             if (!equipamento || equipamento.clientes.length === 0) return;
@@ -2060,11 +2539,39 @@
             const nomeRedeEquipamento = equipamento.nomeRede;
             let redeFinal = isDemanda ? nomeRedeEquipamento : (capitalizarRede(normalizarRede(nomeRedeEquipamento)) || "Rede Desconhecida");
 
+            // --- CRIAÇÃO DO CABEÇALHO DA REDE (COM BOTÃO DE SINAL) ---
             const redeDiv = document.createElement("div");
             redeDiv.className = "hud-network-header";
-            redeDiv.innerHTML = `📡 <strong>${redeFinal}</strong>`;
+
+            const tituloRede = document.createElement("strong");
+            tituloRede.innerHTML = `📡 ${redeFinal}`;
+            redeDiv.appendChild(tituloRede);
+
+            // Calcula IDs ativos desta rede para o botão
+            const idsAtivosDestaRede = equipamento.clientes
+                .filter(c => {
+                    const dados = infoClientes[c.id];
+                    return dados && dados.data.registro?.nome.includes('ATIVO');
+                })
+                .map(c => c.id);
+
+            if (idsAtivosDestaRede.length > 0) {
+                const btnSinalRede = document.createElement("button");
+                btnSinalRede.className = "hud-btn-small";
+                btnSinalRede.innerHTML = `${ICONS.signal} Sinal`;
+                btnSinalRede.title = `Verificar sinal de ${idsAtivosDestaRede.length} clientes ativos nesta rede`;
+
+                btnSinalRede.onclick = (e) => {
+                    e.stopPropagation();
+                    verificarNivelDeSinal(idsAtivosDestaRede, btnSinalRede);
+                };
+
+                redeDiv.appendChild(btnSinalRede);
+            }
             conteudoDiv.appendChild(redeDiv);
 
+
+            // --- LOOP DE CLIENTES (RESTAURADO) ---
             const clientesDoEquipamento = [...equipamento.clientes].sort((a, b) => {
                 const portaA = parseInt(a.porta) || Infinity;
                 const portaB = parseInt(b.porta) || Infinity;
@@ -2079,106 +2586,102 @@
                 li.className = 'hud-client-row';
                 li.onclick = () => {
                     li.classList.toggle('clicked');
-
-                    // --- INÍCIO DA CORREÇÃO ---
-                    // "Trava" o HUD assim que o usuário interagir pela primeira vez
-                    if (hudUserInteracted === false) {
-                         console.log('[HUD Script] Interação detetada (tachado). A desativar refresh no hover.');
-                         hudUserInteracted = true;
-                    }
-                    // --- FIM DA CORREÇÃO ---
+                    if (hudUserInteracted === false) hudUserInteracted = true;
                 };
 
                 let texto = clienteDetalhes.data.registro?.nome || "Cliente desconhecido";
                 let partes = texto.split(" - ");
-
-                // --- LÓGICA DE PARSING ATUALIZADA ---
                 let contrato = partes[1]?.trim() || "";
                 let matchStatus = texto.match(/\((ATIVO|CANCELADO|SUSPENSO|NAO IDENTIFICADO)\)/i);
                 let status = matchStatus ? matchStatus[1].toUpperCase().replace(' ', '-') : "NAO-IDENTIFICADO";
 
-                // (NOVO) Extrai o nome do cliente
-                let nomeCliente = "";
-                if (partes.length > 2) {
-                    // Pega tudo da parte 2 em diante e junta (caso o nome tenha " - ")
-                    let ultimasPartes = partes.slice(2).join(" - ");
-                    // Remove o status do final do nome
-                    nomeCliente = ultimasPartes.replace(/\s*\((ATIVO|CANCELADO|SUSPENSO|NAO IDENTIFICADO)\)$/i, "").trim();
+                // Verificação de Status/Sinal
+                const statusConexao = clienteDetalhes.statusConexao;
+                if (status === 'ATIVO' && statusConexao === 'Offline') {
+                    status = 'ATIVO-OFFLINE';
                 }
 
-                // (NOVO) Decide se o nome deve ser exibido
+                let nomeCliente = "";
+                if (partes.length > 2) {
+                    let ultimasPartes = partes.slice(2).join(" - ");
+                    nomeCliente = ultimasPartes.replace(/\s*\((ATIVO|CANCELADO|SUSPENSO|NAO IDENTIFICADO)\)$/i, "").trim();
+                }
                 const nomeDisplay = (state.exibirNomeCliente && nomeCliente)
                                     ? `<span class="hud-client-name"> - ${nomeCliente}</span>`
-                                    : ''; // String vazia se desativado ou se não houver nome
-                // --- FIM DA LÓGICA DE PARSING ---
+                                    : '';
 
                 let redeCliente = (clienteDetalhes.data.rede?.rede || "").replace(/Card \d+ Porta \d+$/i, "").trim();
                 const redeClienteNorm = redeCliente.toLowerCase();
-
                 let mesmaRede = isDemanda ? true : todasRedesNorm.some(r => redeClienteNorm.includes(r));
 
                 const portaDisplay = conexao.obs
                     ? `<img src="https://img.icons8.com/fluency/48/error--v1.png" style="width:14px;height:14px;vertical-align:middle;" title="${conexao.obs}">`
                     : (conexao.porta || '?');
 
+                // Exibição do Nível de Sinal
+                const nivelSinal = clienteDetalhes.nivelSinal;
+                let sinalDisplay = '';
+                if (nivelSinal) {
+                    let corSinal = 'var(--hud-text)';
+                    // Lista de mensagens de erro/aviso para pintar de vermelho
+                    if (['Sem Sinal', 'Erro API', 'Cancelado', 'Sem Dados ONU', 'Selecione o sistema correto no Viaradio', 'Não Encontrado', 'S/ Contrato', 'Erro JSON', 'Fazer Login', 'Sem Leitura', 'Erro Login', 'Sem Dados ONUs'].includes(nivelSinal)) {
+                        corSinal = 'var(--hud-red)';
+                    } else {
+                        // Se for número, avalia
+                        const val = parseFloat(nivelSinal);
+                        if (!isNaN(val)) {
+                             if (val < -25) corSinal = 'var(--hud-orange)';
+                             else corSinal = 'var(--hud-green)';
+                        }
+                    }
+                    sinalDisplay = `<div style="font-size: 0.85em; color: ${corSinal}; margin-top: -2px; padding-left: 20px;">Sinal: ${nivelSinal}</div>`;
+                }
+
                 if (contrato) {
-                    // (ATUALIZADO) Adiciona a variável 'nomeDisplay' ao innerHTML
                     li.innerHTML = `
                         <span class="port">${portaDisplay}:</span>
                         <span class="contract">${contrato}</span>${nomeDisplay}
                         <span class="status-${status}">(${status.charAt(0) + status.slice(1).toLowerCase().replace('-', ' ')})</span>
                         ${redeCliente ? `|| <span class="network">${redeCliente}</span>` : ""}
                     `;
+                    conteudoDiv.appendChild(li);
+
+                    // Adiciona a linha de sinal abaixo
+                    if (sinalDisplay) {
+                        const sinalDiv = document.createElement("div");
+                        sinalDiv.innerHTML = sinalDisplay;
+                        conteudoDiv.appendChild(sinalDiv);
+                    }
+
                     if (!mesmaRede && state.destacarRedesDivergentes) {
                         li.classList.add('network-divergent');
                     }
                 } else {
                     li.innerHTML = `<span class="port">${portaDisplay}:</span> <span class="contract">Cliente Desconhecido</span>`;
+                    conteudoDiv.appendChild(li);
                 }
-                conteudoDiv.appendChild(li);
-            });
-        });
+            }); // Fim do loop de clientes
+        }); // Fim do loop de redes
 
-        // Trava para executar o redimensionamento apenas na carga inicial
+        // --- Redimensionamento Inicial ---
         if (!isInitialLoadComplete) {
-            // --- CÁLCULO DA ALTURA ---
             const headerHeight = cabecalho.offsetHeight;
             const contentHeight = conteudoDiv.scrollHeight;
-            const totalHeight = headerHeight + contentHeight + 15; // 15px de padding/margem
-
-            // Limita a altura máxima
+            const totalHeight = headerHeight + contentHeight + 15;
             const maxHeight = parseInt(getComputedStyle(painel).maxHeight) || 550;
             painel.style.height = `${Math.min(totalHeight, maxHeight)}px`;
 
-            // --- (NOVO) CÁLCULO DA LARGURA ---
-
-            // 1. 'scrollWidth' mede a largura total do conteúdo (incluindo padding)
-            //    mesmo que esteja a transbordar do painel (que estava com 280px).
             let optimalWidth = conteudoDiv.scrollWidth;
-
-            // 2. Verifica se a barra de rolagem vertical está visível
-            //    (Se o conteúdo for mais alto que o espaço visível)
             const isScrollbarVisible = conteudoDiv.scrollHeight > conteudoDiv.clientHeight;
-
-            if (isScrollbarVisible) {
-                // Adiciona 8px para compensar o espaço da barra de rolagem
-                optimalWidth += 8;
-            }
-
-            // 3. Define os limites mínimo e máximo para a largura
-            const minWidth = 409; // Do teu CSS
-            const maxWidth = window.innerWidth * 0.8; // Ex: Max 80% da largura da tela
-
-            // 4. Aplica a nova largura ao painel
+            if (isScrollbarVisible) optimalWidth += 8;
+            const minWidth = 409;
+            const maxWidth = window.innerWidth * 0.8;
             painel.style.width = `${Math.min(Math.max(optimalWidth, minWidth), maxWidth)}px`;
-            // --- FIM DO CÁLCULO DA LARGURA ---
 
-            isInitialLoadComplete = true; // Ativa a trava
+            isInitialLoadComplete = true;
         }
 
-        // --- RE-APLICAR PESQUISA (NOVO) ---
-        // Garante que o filtro seja mantido se o HUD for
-        // redesenhado por uma chamada de API
+        // Re-aplica o filtro de pesquisa
         performSearch();
     }
 
@@ -2349,6 +2852,7 @@
                     });
                 }
             },
+            // RETORNA AO ESTADO DA V3.13 (apenas salva os dados)
             "consultarCliente.php": (data, url, bodyParams) => {
                 const idCliente = bodyParams?.get("idCliente");
                 if (!idCliente) return;
@@ -2358,13 +2862,14 @@
                 // 1. Se o usuário JÁ INTERAGIU (tachou um cliente),
                 // apenas atualiza os dados em segundo plano e NÃO redesenha.
                 if (hudUserInteracted === true) {
-                    infoClientes[idCliente] = { id: idCliente, data };
+                    // Mantém a estrutura de dados (data + novo campo de status)
+                    infoClientes[idCliente] = { id: idCliente, data, statusConexao: null };
                     return; // Sai da função e ignora o finalizarHud()
                 }
 
                 // 2. Se o usuário AINDA NÃO INTERAGIU, processa normalmente.
                 // (Isso permite que o HUD carregue os clientes iniciais)
-                infoClientes[idCliente] = { id: idCliente, data };
+                infoClientes[idCliente] = { id: idCliente, data, statusConexao: null };
                 debouncedFinalizar();
                 // --- FIM DA CORREÇÃO ---
             },
@@ -3915,14 +4420,23 @@ function patchVincularCliente_V11(gw, normalizarRede) {
         }
 
         let corCliente = '';
-        if (dadosCliente.registro.nome.includes('desconhecido'))
+        // Novo: Verifica se o cliente é ATIVO e está OFFLINE
+        const clienteInfoGlobal = window.__hudState__?.infoClientes?.[idCliente];
+        const statusConexao = clienteInfoGlobal?.statusConexao;
+        const isAtivoOffline = dadosCliente.registro.nome.includes('ATIVO') && statusConexao === 'Offline';
+
+        // ⚠️ (NOVO) Adiciona a cor do cliente ativo OFFLINE (Lilás)
+        if (isAtivoOffline) {
+            corCliente = '#993399'; // Lilás (Cor de sua preferência)
+        }
+        else if (dadosCliente.registro.nome.includes('desconhecido'))
             corCliente = '#a5a5a5';
         else if (dadosCliente.registro.nome.includes('ATIVO'))
-            corCliente = '#72f542';
+            corCliente = '#72f542'; // Cor ATIVO/ONLINE
         else if (dadosCliente.registro.nome.includes('SUSPENSO'))
             corCliente = '#FFCC00';
         else
-            corCliente = '#f54242';
+            corCliente = '#f54242'; // Cor CANCELADO
 
         this.flags.cliente = true;
         this.cliente = this.container.svg.append(function(){
@@ -3949,6 +4463,7 @@ function patchVincularCliente_V11(gw, normalizarRede) {
 
 
         // --- (INÍCIO DA MODIFICAÇÃO - V11 INTERATIVO) ---
+        // ⚠️ ENVOLVIDO NA CONDIÇÃO DE ATIVAÇÃO NA FUNÇÃO runMainScript()
         try {
             if (dadosCliente && this.cliente) {
 
@@ -4041,7 +4556,7 @@ function patchVincularCliente_V11(gw, normalizarRede) {
 
                 const highlightFill = isLight ? '#e1e4e8' : '#3a3f4b'; // Fundo do hover
                 const divergentFill = isLight ? 'rgba(215, 58, 73, 0.2)' : 'rgba(224, 108, 117, 0.2)'; // Fundo vermelho
-                const defaultFill = destacar ? divergentFill : 'transparent'; // Fundo padrão
+                const defaultFill = 'transparent'; // Fundo padrão
 
                 rectElement.setAttribute("fill", defaultFill);
 
@@ -4132,68 +4647,6 @@ function patchRemoverCliente_V4(gw) {
         return originalRemoverCliente.apply(this, arguments);
     };
 }
-
-/**
- * Patch 2: Modifica 'removerCliente' para LIMPAR os nossos dados. (V3 - Limpa Grupo)
- */
-function patchRemoverCliente_V3(gw) {
-    // 1. Guarda a função original
-    const originalRemoverCliente = gw.geogrid.modulo.diagrama.objetos.fibra.prototype.removerCliente;
-
-    // 2. Substitui
-    gw.geogrid.modulo.diagrama.objetos.fibra.prototype.removerCliente = function() {
-        // 'this' é a 'fibra'
-
-        // --- (INÍCIO) NOSSA LIMPEZA ---
-        try {
-            if (this.cliente) {
-                const parentGroup = this.cliente.node().parentNode;
-                // Remove o nosso grupo interativo (que contém o texto e o fundo)
-                const injectedGroup = parentGroup.querySelector('.hud-injected-group');
-                if (injectedGroup) {
-                    parentGroup.removeChild(injectedGroup);
-                }
-            }
-        } catch(e) {
-            console.error("[HUD Patch V3] Erro ao limpar grupo injetado:", e);
-        }
-        // --- (FIM) NOSSA LIMPEZA ---
-
-        // 3. Chama a função original para remover o "bonequinho"
-        return originalRemoverCliente.apply(this, arguments);
-    };
-}
-
-/**
- * Patch 2: Modifica 'removerCliente' para LIMPAR os nossos dados.
- * (Baseado no código-fonte de geogrid.modulo.diagrama.objetos.fibra.js)
- */
-function patchRemoverCliente(gw) {
-    // 1. Guarda a função original
-    const originalRemoverCliente = gw.geogrid.modulo.diagrama.objetos.fibra.prototype.removerCliente;
-
-    // 2. Substitui
-    gw.geogrid.modulo.diagrama.objetos.fibra.prototype.removerCliente = function() {
-        // 'this' é a 'fibra'
-
-        // --- (INÍCIO) NOSSA LIMPEZA ---
-        try {
-            // O 'this.cliente' é o ícone do "bonequinho" que está prestes
-            // a ser removido pela função original.
-            if (this.cliente) {
-                const parentGroup = this.cliente.node().parentNode;
-                // Removemos os nossos textos ANTES que o ícone seja removido.
-                parentGroup.querySelectorAll('.hud-injected-text').forEach(el => el.remove());
-            }
-        } catch(e) {
-            console.error("[HUD Patch V2] Erro ao limpar textos injetados:", e);
-        }
-        // --- (FIM) NOSSA LIMPEZA ---
-
-        // 3. Chama a função original para remover o "bonequinho"
-        return originalRemoverCliente.apply(this, arguments);
-    };
-}
 // --- (FIM) MÓDULO DE INJEÇÃO V2 (vincularCliente) ---
 
 // --- INICIAÇÃO (FINAL) ---
@@ -4225,7 +4678,11 @@ function patchRemoverCliente(gw) {
         iniciarListenerDeBuscaPoste();
         iniciarListenerDePesquisaRapida();
         iniciarListenerAdicionarEquipamento();
-        iniciarInjecaoDiagramaV2();
+
+        // NOVO: Adiciona o módulo de injeção do diagrama apenas se a setting estiver ativa
+        if (state.exibirInfoDiagrama) {
+            iniciarInjecaoDiagramaV2();
+        }
 
         // 4. LISTENERS DA PONTE (Custom Events)
         document.addEventListener('hud:showProgress', (e) => {
