@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Geogrid Tools
 // @namespace    http://tampermonkey.net/
-// @version      4.1
+// @version      4.2
 // @description  Adiciona um HUD com informações de clientes e atalhos no Geo Grid, ativado pela tecla "+" do Numpad.
 // @author       Jhon
 // @match        http://172.16.6.57/geogrid/aconcagua/*
@@ -2674,13 +2674,46 @@ async function verificarNivelDeSinal(idsParaConsultar, btnElement) {
                 const btnSinalRede = document.createElement("button");
                 btnSinalRede.className = "hud-btn-small";
                 btnSinalRede.innerHTML = `${ICONS.signal} Sinal`;
-                btnSinalRede.title = `Verificar sinal de ${idsAtivosDestaRede.length} clientes ativos nesta rede`;
+                btnSinalRede.title = `Clique para verificar esta rede.\nSegure CTRL + Clique para verificar TODAS as redes da caixa.`; // (Opcional) Tooltip atualizado
 
                 btnSinalRede.onclick = (e) => {
                     e.stopPropagation();
-                    verificarNivelDeSinal(idsAtivosDestaRede, btnSinalRede);
-                };
 
+                    // 1. Se o usuário segurar CTRL, coletamos TODOS os clientes ativos do painel
+                    if (e.ctrlKey) {
+                        const idsTotais = [];
+
+                        // 'ordemFinal' contém os IDs de todos os equipamentos listados no HUD
+                        ordemFinal.forEach(eqId => {
+                            const eq = equipamentosInfo[eqId];
+                            if (eq && eq.clientes) {
+                                // Filtra apenas os ativos de cada equipamento
+                                const ativosDoEquip = eq.clientes.filter(c => {
+                                    const dados = infoClientes[c.id];
+                                    // Verifica se existe dados e se o nome contém 'ATIVO'
+                                    return dados && dados.data.registro?.nome.includes('ATIVO');
+                                }).map(c => c.id);
+
+                                // Adiciona ao montante geral
+                                idsTotais.push(...ativosDoEquip);
+                            }
+                        });
+
+                        if (idsTotais.length > 0) {
+                            // Feedback visual rápido
+                            showHudToast(`Modo Turbo: Verificando sinal de ${idsTotais.length} clientes em todas as redes...`, 'success');
+                            // Chama a função principal passando a lista completa
+                            // Usamos 'btnSinalRede' como referência para o texto "Cancelar"
+                            verificarNivelDeSinal(idsTotais, btnSinalRede);
+                        } else {
+                            showHudToast('Nenhum cliente ativo encontrado no painel.', 'warning');
+                        }
+
+                    } else {
+                        // 2. Comportamento Padrão: Verifica apenas esta rede específica
+                        verificarNivelDeSinal(idsAtivosDestaRede, btnSinalRede);
+                    }
+                };
                 redeDiv.appendChild(btnSinalRede);
             }
             conteudoDiv.appendChild(redeDiv);
