@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Geogrid Tools
 // @namespace    http://tampermonkey.net/
-// @version      4.0
+// @version      4.1
 // @description  Adiciona um HUD com informações de clientes e atalhos no Geo Grid, ativado pela tecla "+" do Numpad.
 // @author       Jhon
 // @match        http://172.16.6.57/geogrid/aconcagua/*
@@ -1401,6 +1401,121 @@ async function verificarNivelDeSinal(idsParaConsultar, btnElement) {
             }, 300); // 300ms corresponde ao tempo da transição (transition: 0.3s)
         }
     }
+
+    function aplicarPatchMarcadores() {
+    console.log("[HUD Patch] Aplicando correção de dependência fantasma em mudaMarcadoresCabo...");
+
+    // O código abaixo roda no contexto da página (unsafeWindow) para ter acesso às variáveis nativas
+    const patchScript = `
+    (function() {
+        // Salva a original por segurança (opcional, mas boa prática)
+        const originalMudaMarcadoresCabo = window.mudaMarcadoresCabo;
+
+        // Sobrescrevemos a função nativa
+        window.mudaMarcadoresCabo = function(ficha, indice, over) {
+
+            // Flag para evitar loop infinito de requisições no mesmo cabo
+            if (jsonPrincipal[ficha][indice].__reparando === true) {
+                return;
+            }
+
+            var erro = '';
+
+            // --- LÓGICA ORIGINAL (REPLICADA) ---
+            for(var i in jsonPrincipal[ficha][indice].points){
+
+                // verifica se é diferente de ponto guia
+                if(jsonPrincipal[ficha][indice].points[i].cd != ''){
+
+                    var codigoMarcador = jsonPrincipal[ficha][indice].points[i].cd
+                    var fichaMarcador = retornaFicha(codigoMarcador);
+                    var indiceMarcador = retornaIndice(fichaMarcador, codigoMarcador);
+
+                    // verifica se o marcador foi encontrado
+                    if(indiceMarcador != -1){
+
+                        // LÓGICA ORIGINAL DE HOVER
+                        if(jsonPrincipal[fichaMarcador][indiceMarcador].marker && jsonPrincipal[fichaMarcador][indiceMarcador].marker.draggable == false){
+
+                            var icone = retornaIcone(jsonPrincipal[fichaMarcador][indiceMarcador].bType);
+
+                            if(over == true){
+                                icone = icone+'_hover';
+                            }
+
+                            var iconeOptions = {
+                              url: 'i/m/'+icone+'.png',
+                              size: new google.maps.Size(37, 39),
+                              anchor: new google.maps.Point(20, 20)
+                            };
+
+                            var opcoes = {
+                                icon: iconeOptions,
+                            };
+
+                            jsonPrincipal[fichaMarcador][indiceMarcador].marker.setOptions(opcoes)
+                        }
+
+                    } else {
+                        // --- AQUI ESTÁ O PULO DO GATO (MODIFICAÇÃO) ---
+
+                        console.warn("[HUD Auto-Repair] Dependência faltando detectada: " + codigoMarcador + " no cabo " + jsonPrincipal[ficha][indice].cd);
+
+                        // Marca o cabo como "em reparo" para não disparar isso 100x por segundo
+                        jsonPrincipal[ficha][indice].__reparando = true;
+
+                        // 1. Cria a estrutura que o completaJson espera
+                        var itemCaboParaRecarregar = {
+                            cd: jsonPrincipal[ficha][indice].cd,
+                            sg: jsonPrincipal[ficha][indice].sg || '',
+                            id: jsonPrincipal[ficha][indice].cd + '@AutoRepair' // ID Fictício
+                        };
+
+                        // 2. Chama o completaJson DIRETAMENTE.
+                        // Isso pula a verificação "verificaSelectedItens" que impediria o reload.
+                        // Argumentos: (jsonJava, cdAbrir, deveCentralizar, carregamentos)
+                        // Passamos false no final para não aparecer a barra de carregamento intrusiva
+                        if (typeof completaJson === 'function') {
+                            completaJson([itemCaboParaRecarregar], "", false, false);
+
+                            // Feedback visual discreto (Opcional)
+                            if (typeof criaAlerta === 'function') {
+                                // criaAlerta("mensagem", "ativa", "Sincronizando dependências...");
+                                // setTimeout(() => criaAlerta("mensagem", "cancela"), 1000);
+                            }
+                        }
+
+                        // Remove a flag de reparo após 5 segundos (tempo para a requisição voltar)
+                        setTimeout(function() {
+                             if(jsonPrincipal[ficha] && jsonPrincipal[ficha][indice]) {
+                                jsonPrincipal[ficha][indice].__reparando = false;
+                                // Opcional: tentar aplicar o hover novamente
+                                // mudaMarcadoresCabo(ficha, indice, over);
+                             }
+                        }, 5000);
+
+                        // Interrompe o loop e a função para não gerar o erro nativo
+                        return;
+                        // ----------------------------------------------
+                    }
+                }
+            }
+
+            // verifica se teve erros (mantido do original, caso algo passe)
+            if((erro != '') && (over == true)){
+                criaAlerta("mensagem", "ativa", erro);
+            }
+        };
+
+        console.log("[HUD Patch] mudaMarcadoresCabo sobrescrito com sucesso.");
+    })();
+    `;
+
+    const script = document.createElement('script');
+    script.textContent = patchScript;
+    (document.head || document.documentElement).appendChild(script);
+    script.remove();
+}
 
     /** (NOVO) Mostra uma notificação toast personalizada */
     function showHudToast(message, type = 'error') {
@@ -4658,6 +4773,7 @@ function patchRemoverCliente_V4(gw) {
         // (Estes não dependem do banco de dados)
         injetarEstilosGlobais();
         injetarScriptPagina();
+        aplicarPatchMarcadores();
         iniciarInterceptadorDoMapa();
         ativarAvisoDeSaida();
 
