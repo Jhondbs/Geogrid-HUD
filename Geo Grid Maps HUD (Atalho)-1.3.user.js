@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Geogrid Tools
 // @namespace    http://tampermonkey.net/
-// @version      4.2
+// @version      4.3
 // @description  Adiciona um HUD com informações de clientes e atalhos no Geo Grid, ativado pela tecla "+" do Numpad.
 // @author       Jhon
 // @match        http://172.16.6.57/geogrid/aconcagua/*
@@ -2778,7 +2778,7 @@ async function verificarNivelDeSinal(idsParaConsultar, btnElement) {
                         // Se for número, avalia
                         const val = parseFloat(nivelSinal);
                         if (!isNaN(val)) {
-                             if (val < -25) corSinal = 'var(--hud-orange)';
+                             if (val < -24.30) corSinal = 'var(--hud-orange)';
                              else corSinal = 'var(--hud-green)';
                         }
                     }
