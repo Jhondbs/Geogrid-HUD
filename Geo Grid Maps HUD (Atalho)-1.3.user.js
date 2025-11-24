@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Geogrid Tools
 // @namespace    http://tampermonkey.net/
-// @version      4.3
+// @version      4.5
 // @description  Adiciona um HUD com informações de clientes e atalhos no Geo Grid, ativado pela tecla "+" do Numpad.
 // @author       Jhon
 // @match        http://172.16.6.57/geogrid/aconcagua/*
@@ -4811,6 +4811,7 @@ function patchRemoverCliente_V4(gw) {
         ativarAvisoDeSaida();
 
         // 2. (IMPORTANTE) Espera o DB estar pronto
+        /*
         try {
             await iniciarCacheDB(); // <-- O 'await' pausa aqui até o DB estar pronto
             console.log("[HUD Script] Banco de dados pronto.");
@@ -4818,6 +4819,7 @@ function patchRemoverCliente_V4(gw) {
             console.error("[HUD Script] FALHA CRÍTICA ao iniciar DB. O cache não funcionará.", e);
             // Mesmo se falhar, o resto do script (HUD, etc.) pode continuar
         }
+        */
 
         // 3. Funções que dependem do DB ou devem rodar após o 'await'
         // (iniciarInterceptadorXHR agora pode usar 'cacheDB' com segurança)
