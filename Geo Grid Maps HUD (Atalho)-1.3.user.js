@@ -1,13 +1,15 @@
 // ==UserScript==
 // @name         New - GeoGrid Tools
 // @namespace    http://tampermonkey.net/
-// @version      5.3
-// @description  Ferramentas avançadas para GeoGrid Maps
+// @version      5.5
+// @description  Ferramentas avançadas para GeoGrid Maps + OCR
 // @author       Jhon
 // @match        http://172.16.6.57/geogrid/aconcagua/*
 // @run-at       document-end
 // @grant        unsafeWindow
 // @grant        GM_xmlhttpRequest
+// @grant        GM_setClipboard
+// @require      https://unpkg.com/tesseract.js@v4.0.3/dist/tesseract.min.js
 // @downloadURL https://github.com/Jhondbs/Geogrid-HUD/raw/refs/heads/main/Geo%20Grid%20Maps%20HUD%20(Atalho)-1.3.user.js
 // @updateURL https://github.com/Jhondbs/Geogrid-HUD/raw/refs/heads/main/Geo%20Grid%20Maps%20HUD%20(Atalho)-1.3.user.js
 // ==/UserScript==
@@ -550,122 +552,6 @@
         return null;
     }
 
-    // Extrai lat/lng de textos ou URLs variadas
-    function extractCoords(text) {
-        if (!text) return null;
-        let m;
-        // Padrão URL Google Maps novo (!3d, !4d)
-        if (m = text.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/)) return { lat: m[1], lon: m[2] };
-        // Padrão URL antiga (@lat,lon)
-        if (m = text.match(/@(-?\d+\.\d+),\s*(-?\d+\.\d+)/)) return { lat: m[1], lon: m[2] };
-        // Padrão Query param (?q=lat,lon)
-        if (m = text.match(/[?&]q=(-?\d+\.\d+),\s*(-?\d+\.\d+)/)) return { lat: m[1], lon: m[2] };
-        // Padrão Texto Simples (-23.555, -46.555)
-        const nums = text.match(/(-?\d+\.\d+)/g);
-        if (nums && nums.length >= 2) return { lat: nums[0], lon: nums[1] };
-        return null;
-    }
-
-    // Resolve links encurtados (goo.gl, maps.app.goo.gl) usando o Tampermonkey para evitar CORS
-    function resolveShortlinkWithGM(url) {
-        return new Promise((resolve, reject) => {
-            let target = url;
-            if (!/^https?:\/\//i.test(target)) target = 'https://' + target;
-
-            GM_xmlhttpRequest({
-                method: "GET",
-                url: target,
-                headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" }, // User-agent desktop
-                onload: (response) => {
-                    // Tenta pegar a URL final do redirecionamento
-                    const finalUrl = response.finalUrl || response.responseURL;
-                    const html = response.responseText || '';
-                    resolve({ url: finalUrl || target, html: html });
-                },
-                onerror: (err) => reject(err),
-                ontimeout: (err) => reject(err)
-            });
-        });
-    }
-
-    function iniciarListenerDeColarCoordenadas() {
-        console.log("[HUD Script] Listener de Colar Coordenadas ativado.");
-
-        document.body.addEventListener('paste', async function(e) {
-            // 1. Verifica se o alvo é o campo de Latitude
-            const input = e.target;
-            if (!input || !input.matches || !input.matches('input[name="latitude"]')) return;
-
-            // 2. Pega o texto colado
-            const pastedText = (e.clipboardData || window.clipboardData).getData('text').trim();
-            if (!pastedText) return;
-
-            // 3. Tenta encontrar o campo de Longitude e o botão OK vizinhos
-            // A estrutura do GeoGrid geralmente agrupa isso dentro de um painel flutuante
-            const parentPanel = input.closest('.padrao-painel-flutuante') || input.parentElement.parentElement;
-            if (!parentPanel) return;
-
-            const lonInput = parentPanel.querySelector('input[name="longitude"]');
-            const btnOk = parentPanel.querySelector('button[name="ok"]') || parentPanel.querySelector('.botao-ok'); // .botao-ok é backup
-
-            if (!lonInput) return;
-
-            // 4. Se for apenas um número simples (ex: "-23.555"), deixa o navegador colar normalmente
-            // Se tiver vírgula, espaço ou letras (http), nós interceptamos
-            const isSimpleNumber = /^-?\d+(\.\d+)?$/.test(pastedText);
-            if (isSimpleNumber) return;
-
-            e.preventDefault(); // Impede a colagem padrão
-
-            // --- PROCESSAMENTO ---
-
-            // A) Tenta extrair direto do texto (formato: "lat, lon" ou "lat lon")
-            let coords = extractCoords(pastedText);
-
-            // B) Se não achou e parece um link, tenta resolver o link (assíncrono)
-            if (!coords && (pastedText.includes('http') || pastedText.includes('goo.gl') || pastedText.includes('maps.app'))) {
-                // Feedback visual temporário
-                input.value = "Analisando Link...";
-                lonInput.value = "...";
-
-                try {
-                    const resolved = await resolveShortlinkWithGM(pastedText);
-                    // Tenta extrair da URL final
-                    coords = extractCoords(resolved.url);
-                    // Se falhar, tenta extrair do HTML (meta tags)
-                    if (!coords) coords = extractCoords(resolved.html);
-                } catch (err) {
-                    console.error("Erro ao resolver link:", err);
-                    if (typeof UIManager !== 'undefined') UIManager.showToastGeneric("Erro ao ler link", "#ff7675");
-                }
-            }
-
-            // --- PREENCHIMENTO ---
-            if (coords && coords.lat && coords.lon) {
-                input.value = coords.lat;
-                lonInput.value = coords.lon;
-
-                // Foca no botão OK para facilitar o "Enter"
-                if (btnOk) {
-                    btnOk.focus();
-                    btnOk.style.boxShadow = "0 0 10px #00b894"; // Destaque visual temporário
-                    setTimeout(() => btnOk.style.boxShadow = "", 1000);
-                }
-
-                if (typeof UIManager !== 'undefined') {
-                    UIManager.showToastGeneric("Coordenadas Preenchidas!", "#00b894");
-                }
-            } else {
-                // Falhou: restaura o valor (ou deixa vazio) e avisa
-                input.value = "";
-                lonInput.value = "";
-                if (typeof UIManager !== 'undefined') {
-                    UIManager.showToastGeneric("Formato inválido ou link não reconhecido.", "#ff7675");
-                }
-            }
-        }, true); // UseCapture para garantir prioridade
-    }
-
     /**
      * (NOVO) Intercepta APENAS a "Busca no Mapa" para localização rápida por coordenadas.
      * A busca do Menu continua com o comportamento padrão do site (lento/carregamento de árvore).
@@ -814,7 +700,6 @@
             this.bindGlobalEvents();
             this.applyTheme();
             iniciarListenerDePesquisaRapida();
-            iniciarListenerDeColarCoordenadas();
             console.log("[GeoGrid Tools] UI Initialized.");
         },
 
@@ -856,6 +741,87 @@
                     --gg-accent: #1363a1;
                     --gg-divergent: rgba(215, 58, 73, 0.15);
                 }
+
+                /* --- ESTILOS DO NOVO PAINEL MAC (DUAS COLUNAS) --- */
+                .gg-mac-container {
+                    display: flex;
+                    gap: 15px;
+                    padding: 10px;
+                    height: 100%;
+                    min-height: 250px;
+                }
+                .gg-mac-col-left {
+                    flex: 1;
+                    display: flex;
+                    flex-direction: column;
+                    gap: 10px;
+                }
+                .gg-mac-col-right {
+                    flex: 1;
+                    display: flex;
+                    flex-direction: column;
+                    gap: 12px;
+                    justify-content: flex-start;
+                }
+
+                /* Área de Colagem */
+                .gg-paste-area {
+                    flex-grow: 1;
+                    min-height: 120px;
+                    background-color: var(--gg-input-bg);
+                    border: 2px dashed var(--gg-border);
+                    border-radius: 6px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    color: #b2bec3;
+                    font-size: 13px;
+                    text-align: center;
+                    cursor: text;
+                    transition: border-color 0.2s;
+                    padding: 10px;
+                }
+                .gg-paste-area:focus {
+                    outline: none;
+                    border-color: var(--gg-accent);
+                    background-color: var(--gg-hover);
+                    color: var(--gg-text);
+                }
+
+                /* Canvas de Debug (Oculto ou Pequeno) */
+                #gg-mac-debug-canvas {
+                    width: 100%;
+                    height: 60px;
+                    border: 1px solid var(--gg-border);
+                    background: #000;
+                    object-fit: contain;
+                    display: none; /* Ative se quiser ver o tratamento */
+                }
+
+                /* Inputs da Direita */
+                .gg-info-field {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 4px;
+                }
+                .gg-info-field label {
+                    font-size: 11px;
+                    font-weight: 600;
+                    color: var(--gg-accent);
+                    text-transform: uppercase;
+                }
+                .gg-info-field input {
+                    background-color: var(--gg-input-bg);
+                    border: 1px solid var(--gg-border);
+                    color: var(--gg-text);
+                    padding: 6px 8px;
+                    border-radius: 4px;
+                    font-size: 13px;
+                    font-family: 'Consolas', monospace;
+                    outline: none;
+                }
+                .gg-info-field input:focus { border-color: var(--gg-accent); }
+                .gg-info-field input:read-only { opacity: 0.7; cursor: default; }
 
                 /* --- ANIMAÇÕES --- */
                 #btn-location.capturing {
@@ -1196,14 +1162,15 @@
                 { id: 'btn-clients', title: 'Painel de Clientes', icon: '<path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/>', action: () => this.toggleMainPanel() },
                 { id: 'btn-notes', title: 'Bloco de Notas', icon: '<path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/>', action: () => this.toggleNotesPanel() },
 
-                // ATUALIZADO: Botão Localização
+                // NOVO BOTÃO: Pesquisar via MAC (Ícone de Servidor/Rack)
                 {
-                    id: 'btn-location',
-                    title: 'Localização (Caixa Aberta ou Capturar no Mapa)',
-                    icon: '<path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>',
-                    action: () => this.handleLocationAction()
+                    id: 'btn-mac',
+                    title: 'Pesquisar via MAC',
+                    icon: '<path d="M2 9c0-1.1.9-2 2-2h16c1.1 0 2 .9 2 2v4c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V9zm2 0v4h16V9H4zm0-6c0-1.1.9-2 2-2h16c1.1 0 2 .9 2 2v4c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V3zm2 0v4h16V3H4zm0 12c0-1.1.9-2 2-2h16c1.1 0 2 .9 2 2v4c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2v-4zm2 0v4h16v-4H4z M6 5h2v2H6V5zm0 6h2v2H6v-2zm0 6h2v2H6v-2z"/>',
+                    action: () => this.toggleMacPanel()
                 },
 
+                { id: 'btn-location', title: 'Localização', icon: '<path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>', action: () => this.handleLocationAction() },
                 { id: 'btn-settings', title: 'Configurações', icon: '<path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L5.09 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.58 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>', action: () => this.toggleSettingsPanel() }
             ];
 
@@ -1235,6 +1202,363 @@
                 sidebar.appendChild(btn);
             });
             document.body.appendChild(sidebar);
+        },
+
+        createMacPanel: function() {
+            if (document.getElementById('geogrid-tools-mac-panel')) return;
+
+            const panel = document.createElement('div');
+            panel.id = 'geogrid-tools-mac-panel';
+            panel.className = 'gg-panel';
+            panel.style.width = '550px'; // Um pouco mais largo para as 2 colunas
+
+            const header = document.createElement('div');
+            header.className = 'gg-panel-header';
+            header.innerHTML = `<span>Pesquisar via MAC</span><span class="gg-panel-close">×</span>`;
+
+            const content = document.createElement('div');
+            content.className = 'gg-panel-content';
+            content.style.padding = '0'; // Custom padding no container interno
+
+            // Estrutura HTML do Painel
+            content.innerHTML = `
+                <div class="gg-mac-container">
+                    <div class="gg-mac-col-left">
+                        <div id="gg-mac-paste-area" class="gg-paste-area" contenteditable="true">
+                            Clique aqui e cole a imagem do Serial (Ctrl+V)
+                        </div>
+                        <div id="gg-mac-status" style="font-size:11px; color:#f1c40f; text-align:center; min-height:15px;"></div>
+                        <canvas id="gg-mac-debug-canvas"></canvas>
+                    </div>
+
+                    <div class="gg-mac-col-right">
+                        <div class="gg-info-field">
+                            <label>MAC / Serial</label>
+                            <input type="text" id="gg-input-mac" placeholder="---" readonly style="font-weight:bold; color:var(--gg-accent);">
+                        </div>
+                        <div class="gg-info-field">
+                            <label>Cliente</label>
+                            <input type="text" id="gg-input-cliente" placeholder="Aguardando..." readonly>
+                        </div>
+                        <div class="gg-info-field">
+                            <label>Contrato</label>
+                            <input type="text" id="gg-input-contrato" placeholder="Aguardando..." readonly>
+                        </div>
+                        <div class="gg-info-field">
+                            <label>Rede</label>
+                            <input type="text" id="gg-input-rede" placeholder="Aguardando..." readonly>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            panel.append(header, content);
+            document.body.appendChild(panel);
+
+            // Eventos do Painel
+            header.querySelector('.gg-panel-close').addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.toggleMacPanel(false);
+                const btn = document.getElementById('btn-mac');
+                if(btn) btn.classList.remove('active');
+            });
+
+            this.makeDraggable(panel, header);
+            this.makeResizable(panel);
+
+            // --- LÓGICA DE OCR INTEGRADA ---
+            const pasteArea = content.querySelector('#gg-mac-paste-area');
+            const statusText = content.querySelector('#gg-mac-status');
+            const inputMAC = content.querySelector('#gg-input-mac');
+            const debugCanvas = content.querySelector('#gg-mac-debug-canvas');
+
+            // Listener de Colagem
+            pasteArea.addEventListener('paste', (e) => {
+                const clipboardData = (e.clipboardData || e.originalEvent.clipboardData);
+                const items = clipboardData.items;
+
+                // 1. TENTA IMAGEM (Prioridade)
+                for (let index in items) {
+                    const item = items[index];
+                    if (item.kind === 'file' && item.type.includes('image')) {
+                        e.preventDefault();
+                        const blob = item.getAsFile();
+                        this.processOcrImage(blob, statusText, inputMAC, debugCanvas);
+                        return; // Encerra aqui se for imagem
+                    }
+                }
+
+                // 2. TENTA TEXTO (Se não for imagem)
+                const pastedText = clipboardData.getData('text');
+                if (pastedText) {
+                    e.preventDefault();
+                    // Passa o texto para processamento manual
+                    this.processManualText(pastedText, statusText, inputMAC);
+                }
+            });
+
+            // Focus helper
+            pasteArea.addEventListener('focus', () => {
+                if(pasteArea.innerText.includes("Clique")) pasteArea.innerText = "";
+            });
+        },
+
+        processManualText: function(textRaw, statusEl, outputEl) {
+            statusEl.innerText = "Texto detectado...";
+            statusEl.style.color = "var(--gg-accent)";
+
+            this.clearMacFields(); // Limpa campos antigos
+
+            // Limpeza básica (Uppercase + remove espaços/quebras de linha)
+            let cleanText = textRaw.toUpperCase().replace(/[\n\r\s]+/g, '');
+
+            // Tenta aplicar a mesma lógica de Regex do OCR para garantir formatação
+            // (Ex: se o cara colar "FHTT 09F..." ou um texto sujo, o extrator arruma)
+            // Se o extrator retornar null (ex: texto curto demais), usamos o texto limpo original.
+            const sn = this.extractSNFromText(cleanText) || cleanText;
+
+            outputEl.value = sn;
+
+            // Inicia a busca imediatamente
+            statusEl.innerText = "Buscando na Jupiter...";
+            statusEl.style.color = "#74b9ff"; // Azul
+
+            this.fetchJupiterData(sn, statusEl);
+        },
+
+        processOcrImage: async function(imageBlob, statusEl, outputEl, canvasEl) {
+            statusEl.innerText = "Processando imagem...";
+            statusEl.style.color = "var(--gg-accent)";
+            outputEl.value = "...";
+
+            // Limpa campos anteriores
+            this.clearMacFields();
+
+            try {
+                // 1. Pré-processamento
+                const processedImageURL = await this.preprocessImage(imageBlob, canvasEl);
+
+                statusEl.innerText = "Lendo texto (OCR)...";
+
+                // 2. Tesseract
+                if (typeof Tesseract === 'undefined') {
+                    throw new Error("Tesseract não carregado.");
+                }
+
+                const { data: { text } } = await Tesseract.recognize(processedImageURL, 'eng', {
+                    tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789',
+                    tessedit_pageseg_mode: '6'
+                });
+
+                // 3. Extração e Regex
+                const sn = this.extractSNFromText(text);
+
+                if (sn) {
+                    outputEl.value = sn;
+                    statusEl.innerText = "Buscando na Jupiter...";
+                    statusEl.style.color = "#74b9ff"; // Azul
+
+                    // --- NOVO: Chama a busca externa ---
+                    this.fetchJupiterData(sn, statusEl);
+
+                } else {
+                    statusEl.innerText = "SN não identificado.";
+                    statusEl.style.color = "#ff7675";
+                }
+
+            } catch (err) {
+                console.error(err);
+                statusEl.innerText = "Erro OCR.";
+                statusEl.style.color = "#ff7675";
+            }
+        },
+
+        preprocessImage: function(blob, canvas) {
+            return new Promise((resolve) => {
+                const img = new Image();
+                img.onload = () => {
+                    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+                    // Zoom para melhorar leitura
+                    const targetWidth = 2500;
+                    const scale = targetWidth / img.width;
+                    canvas.width = img.width * scale;
+                    canvas.height = img.height * scale;
+
+                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                    const data = imageData.data;
+
+                    // Filtro de Níveis (Levels)
+                    for (let i = 0; i < data.length; i += 4) {
+                        const g = data[i + 1]; // Green Channel
+                        let gray = 255 - g; // Inverter
+
+                        // Contraste
+                        if (gray < 50) gray = 0;
+                        else if (gray > 180) gray = 255;
+                        else {
+                            gray = (gray - 50) * (255 / (180 - 50));
+                        }
+                        data[i] = gray;
+                        data[i + 1] = gray;
+                        data[i + 2] = gray;
+                    }
+                    ctx.putImageData(imageData, 0, 0);
+                    resolve(canvas.toDataURL('image/jpeg', 1.0));
+                };
+                img.src = URL.createObjectURL(blob);
+            });
+        },
+
+        extractSNFromText: function(fullText) {
+            let cleanText = fullText.toUpperCase().replace(/[\n\r\s]+/g, '');
+            cleanText = cleanText.replace(/O/g, '0'); // Fix comum
+
+            // Regra 1: FHTT perfeito
+            let match = cleanText.match(/FHTT[0-9A-Z]{8,12}/);
+            if (match) return match[0];
+
+            // Regra 2: Prefixo quebrado (Ex: HTT..., TT...)
+            match = cleanText.match(/(?:HTT|TT|FHIT|EHIT)[0-9A-Z]{8,12}/);
+            if (match) {
+                const suffix = match[0].replace(/^[A-Z]+/, '');
+                return "FHTT" + suffix;
+            }
+
+            // Regra 3: Sufixo Hexadecimal (Ex: 09F...)
+            match = cleanText.match(/[0-9]{2}[0-9A-F]{6,10}/);
+            if (match && match[0].length >= 8) {
+                return "FHTT" + match[0];
+            }
+
+            return null;
+        },
+
+        toggleMacPanel: function(force) {
+            this.createMacPanel();
+            this.toggleGeneric('geogrid-tools-mac-panel', force);
+            // Auto focus na área de colagem ao abrir
+            const p = document.getElementById('geogrid-tools-mac-panel');
+            if (p && p.style.display !== 'none') {
+                setTimeout(() => {
+                    const area = document.getElementById('gg-mac-paste-area');
+                    if(area) area.focus();
+                }, 100);
+            }
+        },
+
+        // Limpa os inputs
+        clearMacFields: function() {
+            document.getElementById('gg-input-cliente').value = "";
+            document.getElementById('gg-input-contrato').value = "";
+            document.getElementById('gg-input-rede').value = "";
+        },
+
+        // PASSO 1: Busca MAC para pegar Contrato e Rede
+        fetchJupiterData: function(mac, statusEl) {
+            // Limpa formatação caso venha sujo
+            const macClean = mac.trim();
+            const url = `https://viaradio.jupiter.com.br/painel.php?adm=onus&np=10&p=1&t=1&valorbusca=${macClean}&tipo=3`;
+
+            GM_xmlhttpRequest({
+                method: "GET",
+                url: url,
+                onload: (response) => {
+                    try {
+                        const parser = new DOMParser();
+                        const doc = parser.parseFromString(response.responseText, "text/html");
+
+                        // Pega a primeira linha de dados
+                        const row = doc.querySelector('table tbody tr');
+
+                        if (row) {
+                            const cells = row.querySelectorAll('td');
+                            // Validação básica de colunas
+                            if (cells.length >= 6) {
+                                // Coluna 2 (índice 2): Contrato (Ex: 61273)
+                                const contratoId = cells[2].textContent.trim();
+
+                                // Coluna 5 (índice 5): Rede (Ex: Dorgival 04)
+                                // O usuário indicou a "quinta coluna", no HTML fornecido anteriormente o índice 5 bate com a rede.
+                                const nomeRede = cells[5].textContent.trim();
+
+                                console.log(`[GeoGrid] MAC encontrado. Contrato: ${contratoId}, Rede: ${nomeRede}`);
+
+                                // Preenche o que já temos
+                                document.getElementById('gg-input-contrato').value = contratoId;
+                                document.getElementById('gg-input-rede').value = nomeRede;
+
+                                // PASSO 2: Busca o Nome do Cliente
+                                statusEl.innerText = "Buscando nome...";
+                                this.fetchCustomerName(contratoId, statusEl);
+
+                            } else {
+                                throw new Error("Tabela MAC fora do padrão.");
+                            }
+                        } else {
+                            statusEl.innerText = "MAC não encontrado.";
+                            statusEl.style.color = "#ffeaa7"; // Amarelo
+                            document.getElementById('gg-input-contrato').value = "---";
+                        }
+                    } catch (e) {
+                        console.error(e);
+                        statusEl.innerText = "Erro ao ler dados.";
+                        statusEl.style.color = "#ff7675";
+                    }
+                },
+                onerror: () => {
+                    statusEl.innerText = "Erro conexão Jupiter.";
+                    statusEl.style.color = "#ff7675";
+                }
+            });
+        },
+
+        // PASSO 2: Busca Contrato para pegar Nome do Cliente
+        fetchCustomerName: function(contratoId, statusEl) {
+            const url = `https://viaradio.jupiter.com.br/painel.php?adm=gerenciarusuarios&np=5&p=1&t=&valorbusca=${contratoId}&tipo=2`;
+
+            GM_xmlhttpRequest({
+                method: "GET",
+                url: url,
+                onload: (response) => {
+                    try {
+                        const parser = new DOMParser();
+                        const doc = parser.parseFromString(response.responseText, "text/html");
+
+                        // Procura linha que tenha dados (geralmente tem checkbox ou cor de fundo)
+                        // O seletor pega a primeira TR dentro do TBODY
+                        const row = doc.querySelector('table tbody tr');
+
+                        if (row) {
+                            const cells = row.querySelectorAll('td');
+
+                            // O usuário informou que a segunda coluna é o nome.
+                            // Estrutura HTML observada: td[0]=check, td[1]=id, td[2]=Nome
+                            if (cells.length >= 3) {
+                                const nomeCliente = cells[2].textContent.trim();
+
+                                document.getElementById('gg-input-cliente').value = nomeCliente;
+
+                                statusEl.innerText = "Concluído!";
+                                statusEl.style.color = "#00b894"; // Verde
+                            } else {
+                                statusEl.innerText = "Nome não localizado na tabela.";
+                            }
+                        } else {
+                            // Caso raro: achou no menu ONU mas não achou no Gerenciar Usuários
+                            statusEl.innerText = "Cliente não cadastrado?";
+                            statusEl.style.color = "#fab1a0";
+                        }
+                    } catch (e) {
+                        console.error(e);
+                        statusEl.innerText = "Erro ao ler nome.";
+                    }
+                },
+                onerror: () => {
+                    statusEl.innerText = "Erro conexão Nome.";
+                }
+            });
         },
 
         // --- Helpers: Drag & Resize ---
