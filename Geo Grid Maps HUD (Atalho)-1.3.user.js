@@ -1,12 +1,13 @@
 // ==UserScript==
-// @name         Geogrid Tools
+// @name         New - GeoGrid Tools
 // @namespace    http://tampermonkey.net/
-// @version      4.6
-// @description  Adiciona um HUD com informações de clientes e atalhos no Geo Grid, ativado pela tecla "+" do Numpad.
+// @version      5.0
+// @description  Ferramentas avançadas para GeoGrid Maps
 // @author       Jhon
 // @match        http://172.16.6.57/geogrid/aconcagua/*
+// @run-at       document-end
+// @grant        unsafeWindow
 // @grant        GM_xmlhttpRequest
-// @require      https://cdn.jsdelivr.net/npm/db.js@0.15.0/dist/db.min.js
 // @downloadURL https://github.com/Jhondbs/Geogrid-HUD/raw/refs/heads/main/Geo%20Grid%20Maps%20HUD%20(Atalho)-1.3.user.js
 // @updateURL https://github.com/Jhondbs/Geogrid-HUD/raw/refs/heads/main/Geo%20Grid%20Maps%20HUD%20(Atalho)-1.3.user.js
 // ==/UserScript==
@@ -14,4842 +15,2315 @@
 (function() {
     'use strict';
 
-    // --- 1. CONSTANTES E CONFIGURAÇÕES INICIAIS ---
+    /**
+     * =======================================================================================
+     * MODULE: CONFIGURATION & STATE
+     * =======================================================================================
+     */
+    const STORAGE_KEY = "geogrid_tools_settings_v3";
+    const JUPITER_API_SEARCH = "https://viaradio.jupiter.com.br/painel.php";
+    const JUPITER_API_ONUS = "https://viaradio.jupiter.com.br/api/view/ONUS/retornarONUSJSON";
+    const JUPITER_API_SIGNAL = "https://viaradio.jupiter.com.br/api/view/OLT/retornarNivelDeSinal";
+    let sinalSearchController = null; // Abort controller
 
-    // ÍCONES SVG
-    const ICONS = {
-        search: `<svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>`,
-        notes: `<svg viewBox="0 0 24 24"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>`,
-        copy: `<svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>`,
-        settings: `<svg viewBox="0 0 24 24"><path d="M19.43 12.98c.04-.32.07-.64.07-.98s-.03-.66-.07-.98l2.11-1.65c.19-.15.24-.42.12-.64l-2-3.46c-.12-.22-.39-.3-.61-.22l-2.49 1c-.52-.4-1.08-.73-1.69-.98l-.38-2.65C14.46 2.18 14.25 2 14 2h-4c-.25 0-.46.18-.49-.42l-.38 2.65c-.61-.25-1.17-.59-1.69-.98l-2.49-1c-.23-.09-.49 0-.61.22l-2 3.46c-.13.22-.07.49.12.64l2.11 1.65c-.04.32-.07.65-.07.98s.03.66.07.98l-2.11 1.65c-.19.15-.24-.42-.12-.64l2 3.46c.12.22.39.3.61.22l2.49-1c.52.4 1.08.73 1.69-.98l.38 2.65c.03.24.24.42.49.42h4c.25 0 .46-.18.49-.42l.38-2.65c.61-.25 1.17-.59-1.69-.98l2.49 1c.23.09.49 0 .61-.22l2-3.46c.12-.22.07-.49-.12-.64l-2.11-1.65zM12 15.5c-1.93 0-3.5-1.57-3.5-3.5s1.57-3.5 3.5-3.5 3.5 1.57 3.5 3.5-1.57 3.5-3.5 3.5z"/></svg>`,
-        map: `<svg viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>`,
-        crosshair: `<svg viewBox="0 0 24 24"><path d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm0 6c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z"/><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2"/></svg>`,
-        // NOVO: Ícone Wi-Fi (para o botão de verificação de status)
-        wifi: `<svg viewBox="0 0 24 24"><path d="M1 9l2 2c4.4-4.4 11.6-4.4 16 0l2-2C16.8-2.8 7.2-2.8 1 9zm8 8l3 3 3-3c-1.6-1.6-4.4-1.6-6 0zm-4-4l2 2c2.2-2.2 5.8-2.2 8 0l2-2c-3.3-3.3-8.7-3.3-12 0z"/></svg>`,
-        signal: `<svg viewBox="0 0 24 24"><path d="M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9 9-4.03 9-9-4.03-9-9-9zm0 16c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7zm-1.5-6h3V8h-3v5z"/></svg>`
-    };
-
-    // NOVO: URLs da API do Sinal
-    const JUPITER_API_URL_SEARCH = "https://viaradio.jupiter.com.br/painel.php";
-    const JUPITER_API_URL_ONUS = "https://viaradio.jupiter.com.br/api/view/ONUS/retornarONUSJSON";
-    const JUPITER_API_URL_SIGNAL = "https://viaradio.jupiter.com.br/api/view/OLT/retornarNivelDeSinal";
-
-    // NOVO: Variável de controle para o cancelamento
-    let sinalSearchController = null;
-
-    // LÓGICA DE CONFIGURAÇÕES (LocalStorage)
-    const STORAGE_KEY = "geoGridHudSettings";
     const DEFAULT_SETTINGS = {
         modoClaro: false,
-        copiarCoordenadas: false,
-        removerIndesejado: true,
-        exibirNomeCliente: false,
-        searchBarVisible: true,
-        somenteCancelados: true,
-        copiarNomeRede: false,
-        abrirNovaGuia: false,
-        destacarRedesDivergentes: true,
-        copiarStatus: true,
         exibirInfoDiagrama: false,
-        // REMOVIDO: exibirInfoDiagrama (para manter o comportamento da v3.13)
+        removerIndesejado: true,
+        exibirNomeCliente: true,
+        destacarRedesDivergentes: true,
+        limitarAlturaPainel: true,
+        copiarNomeRede: false,
+        copiarStatus: true,
+        somenteCancelados: true,
+        copiarCoordenadas: false,
+        abrirNovaGuia: false
     };
 
-    // ESTILOS (CSS)
-    const cssStyles = `
-        :root {
-            /* Modo Escuro (Padrão) */
-            --hud-bg: #282c34;
-            --hud-bg-light: #3a3f4b;
-            --hud-border: #4e5463;
-            --hud-text: #abb2bf;
-            --hud-text-header: #ffffff;
-            --hud-accent: #61afef;
-            --hud-green: #98c379;
-            --hud-red: #e06c75;
-            --hud-orange: #d19a66;
-            --hud-font: 'Segoe UI', Roboto, sans-serif;
-        }
+    // Global Data Store
+    let equipamentosInfo = {};
+    let equipamentosOrdem = [];
+    let infoClientes = {};
+    let ultimaAPI = null;
+    let ultimoCodigoEquipamentoPai = null;
+    let localizacao = null;
 
-        /* (NOVO) Definições de Cores do Modo Claro */
-        body.hud-light-mode {
-            --hud-bg: #f4f6f8;             /* Fundo principal (branco suave) */
-            --hud-bg-light: #ffffff;       /* Fundo dos cabeçalhos (branco) */
-            --hud-border: #d1d5da;         /* Bordas (cinza claro) */
-            --hud-text: #24292e;           /* Texto principal (preto suave) */
-            --hud-text-header: #1b1f23;    /* Texto dos cabeçalhos (preto forte) */
-            --hud-accent: #0366d6;         /* Cor de destaque (azul) */
-            --hud-green: #28a745;         /* Verde */
-            --hud-red: #d73a49;           /* Vermelho */
-            --hud-orange: #f66a0a;        /* Laranja */
-        }
-
-        /* (NOVO) Ajustes finos para o Modo Claro */
-        /* Ajusta o placeholder do input de pesquisa */
-        body.hud-light-mode .hud-search-input::placeholder {
-            color: #586069;
-        }
-        /* Ajusta a cor dos ícones dos botões da HUD */
-        body.hud-light-mode .hud-btn {
-            color: var(--hud-text);
-        }
-        body.hud-light-mode .hud-btn:hover {
-            color: white; /* Cor do ícone no hover (branco) */
-        }
-        body.hud-light-mode .hud-btn.active {
-             color: white; /* Cor do ícone ativo (branco) */
-        }
-        /* Ajusta o botão de fechar */
-        body.hud-light-mode .hud-btn-close {
-            color: var(--hud-text);
-        }
-        body.hud-light-mode .hud-btn-close:hover {
-            color: var(--hud-red);
-        }
-        /* Ajusta o texto da rede no painel principal */
-        body.hud-light-mode .hud-network-header strong {
-            color: var(--hud-accent);
-        }
-        /* Ajusta o texto da porta no painel principal */
-        body.hud-light-mode .hud-client-row .port {
-            color: var(--hud-accent);
-        }
-        /* Ajusta o texto do nome do cliente */
-        body.hud-light-mode .hud-client-name {
-            color: var(--hud-text);
-            opacity: 0.8;
-        }
-        /* Ajusta o fundo da textarea de anotações */
-        body.hud-light-mode #blocoNotasHUD textarea {
-            background: var(--hud-bg);
-            color: var(--hud-text);
-        }
-        .hud-panel {
-            position: fixed;
-            background: var(--hud-bg);
-            border: 1px solid var(--hud-border);
-            border-radius: 8px;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.4);
-            font-family: var(--hud-font);
-            color: var(--hud-text);
-            z-index: 2147483647;
-            padding: 0;
-            overflow: hidden;
-            display: flex;
-            flex-direction: column;
-            min-width: 280px;
-            min-height: 150px;
-            max-height: 550px;
-        }
-        .hud-header {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            padding: 6px 10px;
-            background: var(--hud-bg-light);
-            border-bottom: 1px solid var(--hud-border);
-            cursor: move;
-            user-select: none;
-            flex-shrink: 0;
-        }
-        .hud-header strong {
-            color: var(--hud-text-header);
-            font-size: 14px;
-        }
-        .hud-header img.hud-icon {
-            width: 16px;
-            height: 16px;
-        }
-        .hud-content {
-            padding: 8px 12px;
-            font-size: 13px;
-            overflow-y: auto;
-            flex-grow: 1;
-        }
-        .hud-buttons-group {
-            margin-left: auto;
-            display: flex;
-            gap: 4px;
-        }
-        .hud-btn {
-            background: transparent;
-            border: 1px solid var(--hud-border);
-            color: var(--hud-text);
-            padding: 4px;
-            border-radius: 5px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: background-color 0.2s, color 0.2s, opacity 0.2s; /* Adicionado opacity */
-            width: 30px;
-            height: 30px;
-        }
-        .hud-btn:hover {
-            background-color: var(--hud-accent);
-            color: white;
-        }
-        .hud-btn.active {
-            background-color: var(--hud-accent);
-            color: white;
-        }
-        .hud-btn svg {
-            width: 16px;
-            height: 16px;
-            fill: currentColor;
-        }
-        .hud-btn-close { background: transparent; border: none; font-size: 18px; color: var(--hud-text); cursor: pointer; padding: 0 8px; }
-        .hud-btn-close:hover { color: var(--hud-red); }
-
-        .hud-client-row {
-            padding: 3px 0;
-            cursor: pointer;
-            border-radius: 3px;
-            transition: background-color 0.2s;
-        }
-        .hud-client-row.clicked {
-            opacity: 0.5;
-            text-decoration: line-through;
-        }
-        .hud-client-row:hover {
-            background-color: var(--hud-bg-light);
-        }
-        .hud-client-row .port { font-size: 0.9em; color: var(--hud-accent); min-width: 20px; display: inline-block; }
-        .hud-client-row .contract { font-weight: 600; color: var(--hud-text-header); }
-        .hud-client-row .status-ATIVO { color: var(--hud-green); }
-        .hud-client-row .status-CANCELADO { color: var(--hud-red); }
-        .hud-client-row .status-SUSPENSO { color: var(--hud-orange); }
-        .hud-client-row .status-NAO-IDENTIFICADO { color: var(--hud-text); }
-        /* NOVO: Estilo para o status Ativo/Offline */
-        .hud-client-row .status-ATIVO-OFFLINE { color: #993399; }
-        .hud-client-row.network-divergent { background-color: rgba(224, 108, 117, 0.2); }
-        .hud-network-header { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--hud-border); }
-        .hud-network-header strong { color: var(--hud-accent); }
-
-        .hud-checkbox-label {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            font-size: 13px;
-            padding: 6px;
-            cursor: pointer;
-            border-radius: 4px;
-            transition: background-color 0.2s;
-        }
-        .hud-checkbox-label:hover {
-             background-color: var(--hud-bg-light);
-        }
-        .hud-checkbox-label input {
-            accent-color: var(--hud-accent);
-        }
-
-        .hud-content {
-            scrollbar-width: thin;
-            scrollbar-color: var(--hud-border) var(--hud-bg);
-        }
-        .hud-content::-webkit-scrollbar { width: 8px; }
-        .hud-content::-webkit-scrollbar-track { background: var(--hud-bg); }
-        .hud-content::-webkit-scrollbar-thumb {
-            background-color: var(--hud-border);
-            border-radius: 4px;
-            border: 2px solid var(--hud-bg);
-        }
-        .hud-content::-webkit-scrollbar-thumb:hover { background-color: var(--hud-accent); }
-
-        .resizer {
-            position: absolute;
-            background: transparent;
-        }
-        .resizer.top { top: -4px; left: 0; right: 0; height: 8px; cursor: ns-resize; }
-        .resizer.bottom { bottom: -4px; left: 0; right: 0; height: 8px; cursor: ns-resize; }
-        .resizer.left { left: -4px; top: 0; bottom: 0; width: 8px; cursor: ew-resize; }
-        .resizer.right { right: -4px; top: 0; bottom: 0; width: 8px; cursor: ew-resize; }
-        .resizer.top-left { top: -4px; left: -4px; width: 12px; height: 12px; cursor: nwse-resize; z-index: 10; }
-        .resizer.top-right { top: -4px; right: -4px; width: 12px; height: 12px; cursor: nesw-resize; z-index: 10; }
-        .resizer.bottom-left { bottom: -4px; left: -4px; width: 12px; height: 12px; cursor: nesw-resize; z-index: 10; }
-        .resizer.bottom-right { bottom: -4px; right: -4px; width: 12px; height: 12px; cursor: nwse-resize; z-index: 10; }
-
-       /* --- ESTILOS DE PESQUISA (TESTE SIMPLIFICADO) --- */
-        .hud-client-row.highlighted {
-            /* Usamos a cor --hud-orange com 40% de opacidade */
-            background-color: rgba(209, 154, 102, 0.4) !important;
-        }
-
-        /* O hover normal não vai sobrepor o destaque */
-        .hud-client-row.highlighted:hover {
-            background-color: rgba(209, 154, 102, 0.6) !important;
-        }
-
-        .hud-search-bar {
-            padding-bottom: 8px;
-            margin-bottom: 8px;
-            border-bottom: 1px solid var(--hud-border);
-        }
-
-        .hud-search-input {
-            width: 100%;
-            background-color: var(--hud-bg-light);
-            border: 1px solid var(--hud-border);
-            color: var(--hud-text);
-            padding: 8px;
-            border-radius: 4px;
-            font-family: var(--hud-font);
-            font-size: 14px;
-            box-sizing: border-box; /* Garante que o padding não quebre a largura */
-        }
-
-        .hud-search-input::placeholder {
-            color: var(--hud-text);
-            opacity: 0.6;
-        }
-        .hud-client-name {
-            color: var(--hud-text); /* Cor de texto normal */
-            font-weight: normal;
-            font-size: 0.95em;
-            opacity: 0.8; /* Um pouco mais suave que o contrato */
-        }
-        /* --- ESTILOS PAINEL CONFIGURAÇÕES --- */
-        .hud-settings-header {
-            color: var(--hud-accent); /* Cor de destaque (azul) */
-            font-weight: 600;
-            font-size: 14px;
-            padding-bottom: 4px;
-            margin-top: 10px; /* Espaço acima do título */
-            margin-bottom: 4px; /* Espaço abaixo do título */
-            border-bottom: 1px solid var(--hud-border);
-        }
-        /* Garante que o primeiro header não tenha margem em cima */
-        .hud-settings-header:first-of-type {
-            margin-top: 0;
-        }
-        /* --- ESTILOS DO PAINEL DE CADASTRO DE EQUIPAMENTO --- */
-        .hud-cadastro-content {
-            display: flex;
-            flex-direction: column;
-            height: 100%;
-            box-sizing: border-box; /* Garante que o padding não quebre a altura */
-            background-color: var(--hud-bg); /* Garante o fundo */
-        }
-        .hud-cadastro-body {
-            flex-grow: 1; /* Faz o corpo crescer para preencher o espaço */
-            overflow-y: auto;
-            padding: 10px 15px;
-            /* Estilos da barra de rolagem (copiados do .hud-content) */
-            scrollbar-width: thin;
-            scrollbar-color: var(--hud-border) var(--hud-bg);
-        }
-        .hud-cadastro-body::-webkit-scrollbar { width: 8px; }
-        .hud-cadastro-body::-webkit-scrollbar-track { background: var(--hud-bg); }
-        .hud-cadastro-body::-webkit-scrollbar-thumb {
-            background-color: var(--hud-border);
-            border-radius: 4px;
-            border: 2px solid var(--hud-bg);
-        }
-        .hud-cadastro-header {
-            color: var(--hud-accent);
-            font-weight: 600;
-            font-size: 14px;
-            padding-bottom: 4px;
-            margin-top: 10px;
-            margin-bottom: 8px;
-            border-bottom: 1px solid var(--hud-border);
-        }
-        .hud-cadastro-header:first-of-type {
-            margin-top: 0;
-        }
-        .hud-btn-group {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
-        }
-        .hud-toggle-btn {
-            background: var(--hud-bg-light);
-            border: 1px solid var(--hud-border);
-            color: var(--hud-text);
-            padding: 8px 12px;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 13px;
-            transition: background-color 0.2s, color 0.2s, box-shadow 0.2s;
-            user-select: none;
-        }
-        .hud-toggle-btn:hover {
-            background-color: #4e5463; /* Tom de hover */
-        }
-        .hud-toggle-btn.active {
-            background-color: var(--hud-accent);
-            color: white;
-            border-color: var(--hud-accent);
-            box-shadow: 0 0 8px rgba(97, 175, 239, 0.5);
-        }
-        /* Estilo para o grupo do input 'Rede' */
-        .hud-input-group {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            background: var(--hud-bg-light);
-            border: 1px solid var(--hud-border);
-            padding: 8px 12px;
-            border-radius: 5px;
-            flex-grow: 1; /* Faz o input ocupar o espaço */
-            min-width: 200px; /* Largura mínima */
-        }
-        .hud-input-group label {
-            font-size: 13px;
-            color: var(--hud-text);
-            white-space: nowrap;
-        }
-        .hud-cadastro-input {
-            width: 100%;
-            background-color: var(--hud-bg); /* Mais escuro que o fundo do grupo */
-            border: 1px solid var(--hud-border);
-            color: var(--hud-text);
-            padding: 5px;
-            border-radius: 4px;
-            font-family: var(--hud-font);
-            font-size: 13px;
-        }
-        /* Estilos do Rodapé (Footer) */
-        .hud-cadastro-footer {
-            padding: 10px 15px;
-            border-top: 1px solid var(--hud-border);
-            background: var(--hud-bg-light);
-            display: flex;
-            justify-content: flex-end; /* Alinha botões à direita */
-            gap: 10px;
-            flex-shrink: 0; /* Impede o rodapé de encolher */
-        }
-        .hud-footer-btn {
-            background: var(--hud-bg);
-            border: 1px solid var(--hud-border);
-            color: var(--hud-text);
-            padding: 8px 15px;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 14px;
-            font-weight: 600;
-            transition: background-color 0.2s, color 0.2s;
-        }
-        .hud-footer-btn:hover {
-            background-color: #4e5463;
-        }
-        .hud-footer-btn.primary { /* Botão Confirmar */
-            background-color: var(--hud-green);
-            border-color: var(--hud-green);
-            color: #ffffff;
-        }
-        .hud-footer-btn.primary:hover {
-            background-color: #a8d389;
-        }
-        .hud-footer-btn.danger { /* Botão Cancelar */
-             color: var(--hud-red);
-             border-color: var(--hud-red);
-             background: transparent;
-        }
-        .hud-footer-btn.danger:hover {
-             background-color: rgba(224, 108, 117, 0.2);
-        }
-        /* --- ESTILOS DO AUTOCOMPLETE DE REDE --- */
-        .hud-input-group {
-            /* Precisamos disso para posicionar a caixa de sugestões */
-            position: relative;
-        }
-        .hud-autocomplete-suggestions {
-            display: none; /* Começa escondido */
-            position: absolute;
-            top: 100%; /* Aparece logo abaixo do input */
-            left: 0;
-            right: 0;
-            background: var(--hud-bg-light);
-            border: 1px solid var(--hud-border);
-            border-top: none;
-            border-radius: 0 0 5px 5px;
-            z-index: 100;
-            max-height: 200px;
-            overflow-y: auto;
-            /* Estilos da barra de rolagem */
-            scrollbar-width: thin;
-            scrollbar-color: var(--hud-border) var(--hud-bg);
-        }
-        .hud-autocomplete-suggestions::-webkit-scrollbar { width: 8px; }
-        .hud-autocomplete-suggestions::-webkit-scrollbar-track { background: var(--hud-bg-light); }
-        .hud-autocomplete-suggestions::-webkit-scrollbar-thumb {
-            background-color: var(--hud-border);
-            border-radius: 4px;
-        }
-        .hud-suggestion-item {
-            padding: 8px 12px;
-            color: var(--hud-text);
-            font-size: 13px;
-            cursor: pointer;
-            border-bottom: 1px solid var(--hud-border);
-        }
-        .hud-suggestion-item:last-child {
-            border-bottom: none;
-        }
-        .hud-suggestion-item:hover {
-            background-color: var(--hud-accent);
-            color: white;
-        }
-        .hud-suggestion-item.loading {
-            color: var(--hud-orange);
-            cursor: default;
-        }
-        /* --- ESTILOS DO TOAST DE NOTIFICAÇÃO --- */
-        .hud-toast-notification {
-            position: fixed;
-            top: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            background-color: var(--hud-red);
-            color: white;
-            padding: 12px 20px;
-            border-radius: 5px;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
-            font-family: var(--hud-font);
-            font-size: 14px;
-            font-weight: 600;
-            z-index: 2147483647; /* Máximo z-index */
-            opacity: 0;
-            transition: opacity 0.3s, top 0.3s;
-        }
-        /* NOVO: Botão de Sinal Pequeno (na linha da rede) */
-        .hud-btn-small {
-            background: transparent;
-            border: 1px solid var(--hud-border);
-            color: var(--hud-text);
-            padding: 2px 6px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 11px;
-            margin-left: 10px;
-            display: inline-flex;
-            align-items: center;
-            gap: 4px;
-            transition: all 0.2s;
-            vertical-align: middle;
-        }
-        .hud-btn-small:hover {
-            background-color: var(--hud-accent);
-            color: white;
-            border-color: var(--hud-accent);
-        }
-        .hud-btn-small svg {
-            width: 12px;
-            height: 12px;
-            fill: currentColor;
-        }
-        .hud-btn-small:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-        }
-
-    `;
-
-    // --- 2. FUNÇÕES AUXILIARES (HELPERS) ---
-
-    /** (NOVO) Armazena a conexão com o banco de dados IndexedDB */
-    let cacheDB = null;
-
-    /** (MODIFICADO) Inicializa a conexão com o IndexedDB */
-    async function iniciarCacheDB() {
-        try {
-            console.log("[HUD Script - Cache] Iniciando IndexedDB (v2)...");
-            // Abre (ou cria) o banco de dados
-            cacheDB = await db.open({
-                server: 'geogridCache',
-                version: 3,
-                schema: {
-                    apiResponses: { // <-- (ANTIGO) Cache "burro" - Mantemos para fallback
-                        key: { keyPath: 'id' }
-                    },
-                    geoItems: { // <-- (NOVO) Cache "inteligente"
-                        key: { keyPath: 'cd' }, // Chave primária (ex: "JPT25588")
-                        indexes: {
-                            city: 'cdCity', // Índice para buscar por cidade (ex: "1146")
-                            dependencies: 'dependencies.cd'
-                        }
-                    }
-                }
-            });
-            console.log("[HUD Script - Cache] IndexedDB v2 iniciado com sucesso.");
-        } catch (e) {
-            console.error("[HUD Script - Cache] Erro ao iniciar o IndexedDB:", e);
-        }
-    }
-
-    /** (NOVO) Lê uma resposta do cache do IndexedDB */
-    async function lerDoCache(cacheId) {
-        if (!cacheDB) {
-            console.warn("[HUD Script - Cache] O DB não está pronto. Leitura pulada.");
-            return null;
-        }
-
-        try {
-            const registro = await cacheDB.apiResponses.get(cacheId);
-            if (registro) {
-                //console.log(`[HUD Script - Cache] SUCESSO DE CACHE: ${cacheId}`);
-                return registro.data; // Retorna os dados puros (em JSON)
-            }
-        } catch (e) {
-            console.error(`[HUD Script - Cache] Erro ao ler ${cacheId} do DB:`, e);
-        }
-
-        //console.warn(`[HUD Script - Cache] FALHA DE CACHE: ${cacheId}`);
-        return null; // Não encontrado
-    }
-
-    /** (MODIFICADO) Injeta o script 'listener' no contexto da página (para contornar a sandbox) */
-    function injetarScriptPagina() {
-        // Verifica se já foi injetado para não duplicar
-        if (document.getElementById('hud-injected-script')) return;
-
-        const scriptContent = `
-            (function() {
-                // Flag para garantir que rode apenas uma vez
-                if (window.__hudFastLoaderInjected__) return;
-                window.__hudFastLoaderInjected__ = true;
-
-                console.log('%c[HUD Page Context] Listener de Carga Rápida (v4.4 - Preparação Assíncrona) Ativado.', 'color: #61afef; font-weight: bold;');
-
-                // --- Configurações Globais ---
-                const TAMANHO_LOTE_PREPARO = 2500;  // Lotes para a fase de preparação (mais rápido)
-                const TAMANHO_LOTE_RENDER = 1500;  // Lotes para a fase de renderização (mais suave)
-
-                // Filas de trabalho
-                window.__hudFilaDePreparo__ = []; // Itens brutos do cache (ex: 37.000)
-                window.__hudFilaDeCarga__ = [];   // Itens prontos para plotar
-
-                // Armazenamento
-                if (!window.__hudIndiceRapido__) {
-                    window.__hudIndiceRapido__ = {};
-                }
-                window.__hudFichasParaIndexar__ = new Set();
-                window.__hudTotalDeItensPreparo__ = 0;
-                window.__hudTotalDeItensCarga__ = 0;
-
-                // --- Flags Globais ---
-                window.__hudBypassProximaCarga__ = false; // (v2) Para o XHR Interceptor
-                // --- (INÍCIO DA MODIFICAÇÃO - SYNC) ---
-                window.__hudCachePlottedIDs__ = new Set(); // (v3) Armazena IDs do cache para o sync
-                window.__hudIsDeltaLoading__ = false;    // (v3) Flag para 'plotaItensNoMapa' saber que é o delta sync
-                // --- (FIM DA MODIFICAÇÃO - SYNC) ---
-
-                window.__hudFastLoadEmAndamento__ = false;
-
-                // --- (INÍCIO DA OTIMIZAÇÃO v4.4: MONKEY-PATCHING) ---
-                window.__originalRetornaIndice__ = window.retornaIndice;
-                window.__originalCentraliza__ = window.centraliza;
-                // --- (INÍCIO DA MODIFICAÇÃO - SYNC) ---
-                // Precisamos interceptar a função de plotagem do site
-                window.__originalPlotaItensNoMapa__ = window.plotaItensNoMapa;
-                // --- (FIM DA MODIFICAÇÃO - SYNC) ---
-
-
-                window.retornaIndice = function(ficha, codigo) {
-                    try {
-                        const indice = window.__hudIndiceRapido__[ficha][codigo];
-                        if (indice !== undefined) {
-                            return indice;
-                        }
-                    } catch (e) {}
-                    return window.__originalRetornaIndice__(ficha, codigo);
-                };
-
-                /*
-                window.centraliza = function() {
-                    arrayCentralizar = [];
-                    centerBag = new google.maps.LatLngBounds();
-                };
-                */
-
-                // --- (INÍCIO DA MODIFICAÇÃO - SYNC) ---
-                /**
-                 * (NOVO v3) Interceptamos a função 'plotaItensNoMapa'
-                 * Esta função é chamada tanto pela Carga Rápida (várias vezes)
-                 * quanto pela Carga Lenta (uma vez no final).
-                 */
-                window.plotaItensNoMapa = function() {
-                    // Verifica se esta é a chamada da Carga Lenta (Delta)
-                    if (window.__hudIsDeltaLoading__ === true) {
-                        // Reseta a flag para não rodar de novo
-                        window.__hudIsDeltaLoading__ = false;
-
-                        // 'carregados' é a variável global que a Carga Lenta populou
-                        const networkIDs = new Set(carregados.map(item => item.cd));
-
-                        console.log(
-                            '[HUD Page Context] Sincronização Delta iniciada. Comparando %s itens do cache com %s itens da rede.',
-                            window.__hudCachePlottedIDs__.size,
-                            networkIDs.size
-                        );
-
-                        // Limpa o set de cache, o trabalho está feito
-                        window.__hudCachePlottedIDs__.clear();
-                    }
-
-                    // Finalmente, chama a função original para que o mapa
-                    // seja desenhado (seja da carga rápida ou lenta)
-                    return window.__originalPlotaItensNoMapa__(...arguments);
-                };
-                // --- (FIM DA MODIFICAÇÃO - SYNC) ---
-
-
-                /**
-                 * FASE 3: Renderização (Plotagem)
-                 */
-                function processarLoteDeCarga() {
-                    const lote = window.__hudFilaDeCarga__.splice(0, TAMANHO_LOTE_RENDER);
-
-                    if (lote.length === 0) {
-                        // --- O TRABALHO DA CARGA RÁPIDA ACABOU ---
-                        window.__hudFastLoadEmAndamento__ = false;
-                        console.log('%c[HUD Page Context] Carga Rápida concluída!', 'color: #98c379; font-weight: bold;');
-
-                        // --- CORREÇÃO: CANCELA O TOAST DE PROGRESSO ---
-                        document.dispatchEvent(new CustomEvent('hud:hideProgress'));
-
-                        // Restaura funções nativas (APENAS as que monkey-patchou)
-                        window.retornaIndice = window.__originalRetornaIndice__;
-                        window.centraliza = window.__originalCentraliza__;
-
-                        console.log('[HUD Page Context] Executando centralização final...');
-                        window.centraliza(); // Chama a função de verdade (original, que não faz mais nada)
-
-                        // --- CORREÇÃO: CANCELA O ALERTA NATIVO (Por segurança, caso o site o tenha ativado) ---
-                        // Chamamos a função ORIGINAL, que agora é window.criaAlerta
-                        window.criaAlerta("carregando", "cancela");
-
-
-                        // --- (INÍCIO DA MODIFICAÇÃO v2 - Robusta) ---
-                        try {
-                            if (window.jQuery) {
-                                const $botaoCarregar = window.jQuery('img[name="mostrar_item"]');
-                                if ($botaoCarregar.length > 0) {
-                                    console.log('[HUD Page Context] Disparando clique (via jQuery) para Carga Lenta (Delta)...');
-                                    // --- (INÍCIO DA MODIFICAÇÃO - SYNC) ---
-                                    window.__hudIsDeltaLoading__ = true; // (v3) Avisa 'plotaItensNoMapa' que a próxima carga é o sync
-                                    // --- (FIM DA MODIFICAÇÃO - SYNC) ---
-                                    window.__hudBypassProximaCarga__ = true; // (v2) Avisa o XHR Interceptor para não usar o cache
-                                    $botaoCarregar.click();
-                                } else {
-                                     console.warn('[HUD Page Context] Não foi possível encontrar o botão img[name="mostrar_item"] com jQuery.');
-                                }
-                            } else {
-                                console.warn('[HUD Page Context] jQuery não encontrado para disparar o clique do delta load.');
-                            }
-                        } catch (err) {
-                            console.error('[HUD Page Context] Erro ao tentar disparar o delta load:', err);
-                        }
-                        // --- (FIM DA MODIFICAÇÃO v2) ---
-
-                        window.__hudIndiceRapido__ = {};
-                        delete window.__hudFichasParaIndexar__;
-                        return;
-                    }
-
-                    // Calcula o progresso da FASE 3
-                    const processados = window.__hudTotalDeItensCarga__ - window.__hudFilaDeCarga__.length;
-                    const percentual = Math.round((processados / window.__hudTotalDeItensCarga__) * 100);
-                    const msg = \`Carregando itens... (\${percentual}%) \${processados} / \${window.__hudTotalDeItensCarga__}\`;
-
-                    // --- CORREÇÃO: ATUALIZA O TOAST DE PROGRESSO ---
-                    document.dispatchEvent(new CustomEvent('hud:showProgress', { detail: { message: msg } }));
-
-                    carregados = lote;
-                    plotaItensNoMapa(); // (AGORA CHAMA A NOSSA VERSÃO INTERCEPTADA)
-                    setTimeout(processarLoteDeCarga, 0);
-                }
-
-                /**
-                 * FASE 2: Construção do Índice
-                 */
-                function construirIndice() {
-                    console.time('[HUD Page Context] Fase 2: Construção do Índice');
-                    document.dispatchEvent(new CustomEvent('hud:showProgress', { detail: { message: "Finalizando preparação do índice..." } }));
-
-                    for (const ficha of window.__hudFichasParaIndexar__) {
-                        if (!window.__hudIndiceRapido__[ficha]) {
-                            window.__hudIndiceRapido__[ficha] = {};
-                            jsonPrincipal[ficha].forEach((item, index) => {
-                                window.__hudIndiceRapido__[ficha][item.cd] = index;
-                            });
-                        }
-                    }
-                    console.timeEnd('[HUD Page Context] Fase 2: Construção do Índice');
-
-                    // Passa para a Fase 3
-                    window.__hudTotalDeItensCarga__ = window.__hudFilaDeCarga__.length;
-                    processarLoteDeCarga();
-                }
-
-                /**
-                 * FASE 1: Preparação dos Itens
-                 */
-                function processarLoteDePreparo() {
-                    const lote = window.__hudFilaDePreparo__.splice(0, TAMANHO_LOTE_PREPARO);
-
-                    if (lote.length === 0) {
-                        // --- FASE 1 ACABOU ---
-                        console.log('[HUD Page Context] Fase 1 (Preparo) concluída.');
-                        setTimeout(construirIndice, 0);
-                        return;
-                    }
-
-                    // Calcula o progresso da FASE 1
-                    const processados = window.__hudTotalDeItensPreparo__ - window.__hudFilaDePreparo__.length;
-                    const percentual = Math.round((processados / window.__hudTotalDeItensPreparo__) * 100);
-                    const msg = \`Preparando dados... (\${percentual}%) \${processados} / \${window.__hudTotalDeItensPreparo__}\`;
-
-                    document.dispatchEvent(new CustomEvent('hud:showProgress', { detail: { message: msg } }));
-
-                    // Processa o lote
-                    for (const item of lote) {
-                        const ficha = retornaFicha(item.cd);
-                        window.__hudFichasParaIndexar__.add(ficha);
-
-                        const indice = window.__originalRetornaIndice__(ficha, item.cd);
-
-                        if (indice === -1) {
-                            jsonPrincipal[ficha].push(item);
-                            const novoIndice = jsonPrincipal[ficha].length - 1;
-                            window.__hudFilaDeCarga__.push({ cd: item.cd, indice: novoIndice, id: item.cd + '@' + (item.cdCity || 'CIDADE_PADRAO') });
-                        } else if (jsonPrincipal[ficha][indice].visible == false) {
-                            window.__hudFilaDeCarga__.push({ cd: item.cd, indice: indice, id: item.cd + '@' + (item.cdCity || 'CIDADE_PADRAO') });
-                        }
-                    }
-
-                    setTimeout(processarLoteDePreparo, 0);
-                }
-
-                /**
-                 * Listener principal que recebe os dados do cache
-                 */
-                document.addEventListener('hud:plotFast', (e) => {
-                    const items = e.detail.items;
-                    if (!items) return;
-
-                    console.log('[HUD Page Context] Recebidos ' + items.length + ' itens do cache.');
-
-                    // --- (INÍCIO DA MODIFICAÇÃO - SYNC) ---
-                    // (v3) Guarda a lista COMPLETA de IDs que vieram do cache
-                    // para a sincronização no final.
-                    console.log('[HUD Page Context] Armazenando %s IDs do cache para sincronização delta.', items.length);
-                    window.__hudCachePlottedIDs__ = new Set(items.map(item => item.cd));
-                    // --- (FIM DA MODIFICAÇÃO - SYNC) ---
-
-                    try {
-                        window.__hudFastLoadEmAndamento__ = true;
-                        window.__hudFilaDePreparo__ = items;
-                        window.__hudTotalDeItensPreparo__ = items.length;
-                        window.__hudFilaDeCarga__ = [];
-
-                        if (window.__hudFichasParaIndexar__ && typeof window.__hudFichasParaIndexar__.clear === 'function') {
-                            window.__hudFichasParaIndexar__.clear();
-                        } else {
-                            // Se foi deletado ou nunca existiu
-                            window.__hudFichasParaIndexar__ = new Set();
-                        }
-
-                        processarLoteDePreparo();
-
-                    } catch (err) {
-                        console.error("[HUD Page Context] Erro ao processar dados do cache:", err);
-                        // Restaura em caso de erro
-                        window.retornaIndice = window.__originalRetornaIndice__;
-                        window.centraliza = window.__originalCentraliza__;
-                        window.criaAlerta = window.__originalCriaAlerta__;
-                        // --- (INÍCIO DA MODIFICAÇÃO - SYNC) ---
-                        // (v3) Restaura a função de plotagem em caso de erro
-                        window.plotaItensNoMapa = window.__originalPlotaItensNoMapa__;
-                        // --- (FIM DA MODIFICAÇÃO - SYNC) ---
-                        if (typeof criaAlerta === 'function') {
-                            criaAlerta("carregando", "cancela");
-                        }
-                    }
-                });
-            })();
-        `;
-
-        // 5. Cria e injeta o script
-        const scriptElement = document.createElement('script');
-        scriptElement.id = 'hud-injected-script';
-        scriptElement.textContent = scriptContent;
-        (document.head || document.documentElement).appendChild(scriptElement);
-
-        scriptElement.remove();
-    }
-
-    /** (NOVO) Ativa um aviso antes do usuário fechar ou recarregar a página */
-    function ativarAvisoDeSaida() {
-        const handler = (event) => {
-            // Esta linha é necessária para a maioria dos navegadores
-            event.preventDefault();
-            // Esta linha é para navegadores mais antigos
-            event.returnValue = '';
-            return '';
-        };
-
-        // Adiciona o aviso
-        window.addEventListener('beforeunload', handler);
-    }
-
-    // (NOVA FUNÇÃO HELPER) Lida com o 'status: true/false'
-            function fazerRequisicaoDaPagina(url, data, debugInfo) {
-                return new Promise((resolve, reject) => {
-                    const gw = (typeof unsafeWindow !== 'undefined' ? unsafeWindow : window);
-                    if (!gw.jQuery) {
-                        reject("jQuery da página não encontrado");
-                        return;
-                    }
-
-                    gw.jQuery.ajax({
-                        type: "POST",
-                        url: url,
-                        data: data,
-                        dataType: "text",
-                        success: (responseText) => {
-                            // (MODIFICADO) Verifica a resposta do 'salvaEquipamentos'
-                            if (url.includes("salvaEquipamentos.php") || url.includes("cadastraCaboLigacao.php")) {
-                                try {
-                                    const data = JSON.parse(responseText);
-                                    if (data.status === true || data.status === "true") {
-                                        resolve({ status: 'fulfilled', value: `Sucesso: ${debugInfo}`, response: responseText });
-                                    } else {
-                                        // A API retornou 'status: false', rejeita com a mensagem de erro
-                                        reject(data.mensagem || `Erro ao salvar ${debugInfo}`);
-                                    }
-                                } catch (e) {
-                                    reject(`Erro ao parsear resposta de ${url}: ${responseText}`);
-                                }
-                            } else {
-                                // Comportamento original para as outras chamadas (api.php, etc)
-                                resolve({ status: 'fulfilled', value: `Sucesso: ${debugInfo}`, response: responseText });
-                            }
-                        },
-                        error: (xhr, textStatus, errorThrown) => {
-                            console.error(`[HUD Script] Erro de jQuery.ajax em ${debugInfo}:`, textStatus, errorThrown);
-                            reject(`Erro ${xhr.status} ao processar ${debugInfo} (${textStatus})`);
-                        }
-                    });
-                });
-            }
-
-    /** (NOVO) Retorna a data de hoje no formato YYYY-MM-DD */
-    function getTodayDate() {
-        const today = new Date();
-        const yyyy = today.getFullYear();
-        const mm = String(today.getMonth() + 1).padStart(2, '0'); // Meses são 0-indexados
-        const dd = String(today.getDate()).padStart(2, '0');
-        return `${yyyy}-${mm}-${dd}`;
-    }
-
-    // URL da API externa para verificar a conectividade do cliente (Mantida da v3.15)
-    const JUPITER_API_URL = "https://viaradio.jupiter.com.br/buscarclienteoutrosdados.php";
-    // Regex para extrair o status Online/Offline do HTML de resposta (Mantida da v3.15)
-    const STATUS_REGEX = /<font\s+color="(?:green|red)">(Online|Offline)<\/font>/i;
-
-    /**
-     * (Mantida da v3.15) Busca o status de conectividade do cliente ativo na API externa.
-     * @param {string} idGlobal O ID global do cliente.
-     * @returns {Promise<string>} O status ("Online", "Offline", "N/A - Sem Login" ou "Erro API").
-     */
-    function buscarStatusCliente(idGlobal) {
-        return new Promise((resolve) => {
-            console.log(`[HUD Status] Buscando conectividade para ID: ${idGlobal}`);
-
-            // ⚠️ O GM_xmlhttpRequest é crucial para contornar o CORS
-            GM_xmlhttpRequest({
-                method: "GET",
-                url: `${JUPITER_API_URL}?id_global=${idGlobal}`,
-
-                onload: function(response) {
-                    try {
-                        const html = response.responseText;
-                        const match = html.match(STATUS_REGEX);
-
-                        if (match && match[1]) {
-                            const status = match[1].trim();
-                            console.log(`[HUD Status] ID ${idGlobal}: Status Encontrado: ${status}`);
-                            resolve(status); // Retorna "Online" ou "Offline"
-                        } else {
-                            // Este é o cenário mais comum quando o cliente é ativo mas não tem
-                            // um usuário configurado/logado na tabela, ou o HTML mudou.
-                            console.warn(`[HUD Status] ID ${idGlobal}: Status não encontrado na tabela de Usuários.`);
-                            resolve("N/A - Sem Login");
-                        }
-                    } catch (e) {
-                        console.error(`[HUD Status] ERRO DE PARSING para ID ${idGlobal}:`, e);
-                        resolve("Erro API");
-                    }
-                },
-
-                onerror: function(error) {
-                    // Erro de rede ou servidor
-                    console.error(`[HUD Status] ERRO DE REDE/CONEXÃO para ID ${idGlobal} (HTTP ${error.status}):`, error);
-                    resolve("Erro API");
-                },
-
-                ontimeout: function() {
-                    console.error(`[HUD Status] ERRO DE TIMEOUT para ID ${idGlobal}.`);
-                    resolve("Erro API");
-                }
-            });
-        });
-    }
-
-    // --- LÓGICA DO BOTÃO WI-FI (NOVO) ---
-
-    // --- LÓGICA DO BOTÃO WI-FI (MANTIDA DA V3.16) ---
-
-    /**
-     * (Mantida da v3.16) Dispara a busca de status para todos os clientes ativos.
-     */
-    async function verificarStatusClientes() {
-        // Encontra e desativa o botão enquanto a busca estiver em andamento
-        const btnWifi = document.getElementById('verificarWifiBtn');
-        if (btnWifi) {
-            btnWifi.disabled = true;
-            btnWifi.style.opacity = '0.5';
-            btnWifi.title = 'Verificando...';
-        }
-
-        const idsParaConsultar = Object.values(infoClientes)
-            .filter(c => c.data.registro?.nome.includes('ATIVO')) // Filtra apenas ATIVOS
-            .map(c => c.id);
-
-        if (idsParaConsultar.length === 0) {
-            showHudToast("Nenhum cliente ativo para verificar.", 'warning');
-            if (btnWifi) {
-                 btnWifi.disabled = false;
-                 btnWifi.style.opacity = '1';
-                 btnWifi.title = 'Verificar Status Wi-Fi';
-            }
-            return;
-        }
-
-        let consultas = [];
-        let clientesConsultados = 0;
-
-        for (const idCliente of idsParaConsultar) {
-            const consulta = buscarStatusCliente(idCliente).then(statusConexao => {
-                clientesConsultados++;
-                // 1. Atualiza o estado global com o novo status
-                infoClientes[idCliente].statusConexao = statusConexao;
-
-                // 2. Atualiza o toast de progresso
-                const msg = `Verificando conectividade... ${clientesConsultados}/${idsParaConsultar.length}`;
-                showHudToastProgress(msg);
-
-                return { id: idCliente, status: statusConexao };
-            }).catch(e => {
-                clientesConsultados++;
-                infoClientes[idCliente].statusConexao = "Erro API";
-                return { id: idCliente, status: "Erro API" };
-            });
-            consultas.push(consulta);
-        }
-
-        // Exibe o progresso inicial
-        showHudToastProgress(`Verificando conectividade... 0/${idsParaConsultar.length}`);
-
-        try {
-            await Promise.all(consultas);
-
-            // 3. Finaliza a busca e atualiza a HUD
-            hideHudToastProgress(); // Remove o toast de progresso
-
-            // Chama a função que redesenha a lista
-            finalizarHud();
-
-            showHudToast(`Status de ${idsParaConsultar.length} clientes atualizado.`, 'success');
-
-        } catch (e) {
-            console.error("[HUD Status] Erro ao aguardar consultas:", e);
-            showHudToast("Erro na verificação de status. Verifique o console.", 'error');
-        } finally {
-            // Reativa o botão
-            if (btnWifi) {
-                 btnWifi.disabled = false;
-                 btnWifi.style.opacity = '1';
-                 btnWifi.title = 'Verificar Status Wi-Fi';
-            }
-        }
-    }
-
-// --- NOVO: LÓGICA DO BOTÃO "SINAL" ---
-
-/**
- * (ATUALIZADO v3.20 - Busca Segura em Gerenciar Usuários)
- * 1. Busca na página 'gerenciarusuarios'.
- * 2. Lê a tabela HTML (DOM Parser).
- * 3. Valida o nome do cliente para evitar cidade errada.
- * 4. Pega o atributo 'onu="XXXX"'.
- */
-async function buscarSinal(idCliente, controller) {
-    if (controller.signal.aborted) return { sinal: "Cancelado" };
-
-    // --- PREPARAÇÃO DOS DADOS DO GEOGRID ---
-    const dadosGeoGrid = infoClientes[idCliente]?.data?.registro;
-    let contrato = "";
-    let nomeGeoGrid = "";
-
-    if (dadosGeoGrid && dadosGeoGrid.nome) {
-        // Ex: "JPT - 6048 - COLÔNIA DE PESCADORES"
-        const partes = dadosGeoGrid.nome.split(" - ");
-
-        if (partes.length >= 2) {
-            contrato = partes[1].trim();
-            // Pega o resto do nome após o contrato
-            nomeGeoGrid = partes.slice(2).join(" - ").trim();
-        } else {
-            nomeGeoGrid = dadosGeoGrid.nome; // Fallback
-        }
-    }
-
-    // Validação básica de contrato numérico
-    if (!contrato || !/^\d+$/.test(contrato)) {
-        return { sinal: "S/ Contrato" };
-    }
-
-    // Função auxiliar para limpar strings (remove acentos e deixa maiúsculo)
-    const limparTexto = (txt) => txt ? txt.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim() : "";
-    const nomeGeoGridLimpo = limparTexto(nomeGeoGrid);
-
-    // Pega as 2 primeiras palavras para comparação flexível (ex: "COLONIA DE")
-    const termosBusca = nomeGeoGridLimpo.split(" ").slice(0, 2);
-
-    try {
-        // --- PASSO 1: BUSCAR NA PÁGINA DE GERENCIAR USUÁRIOS ---
-        showHudToastProgress(`Sinal: Validando contrato ${contrato}...`);
-
-        // URL baseada na sua descoberta
-        const searchUrl = `${JUPITER_API_URL_SEARCH}?adm=gerenciarusuarios&np=5&p=1&t=&valorbusca=${contrato}&tipo=2`;
-
-        const responseSearch = await new Promise((resolve, reject) => {
-            GM_xmlhttpRequest({
-                method: "GET",
-                url: searchUrl,
-                timeout: 20000,
-                anonymous: false, // Usa cookies da sessão ativa
-                onload: resolve,
-                onerror: reject,
-                ontimeout: reject,
-            });
-        });
-
-        // --- PASSO 2: PARSE DO HTML (Leitura da Tabela) ---
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(responseSearch.responseText, "text/html");
-
-        // Procura por todas as linhas (tr) que tenham o atributo 'onu'
-        // Ex: <tr fibra="true" onu="15339">
-        const linhasTabela = doc.querySelectorAll('tr[onu]');
-
-        let idOnuEncontrado = null;
-
-        for (const linha of linhasTabela) {
-            const textoLinha = limparTexto(linha.textContent || linha.innerText);
-
-            // Verifica se TODOS os termos principais do nome do GeoGrid estão na linha do Viaradio
-            const nomeBate = termosBusca.every(termo => textoLinha.includes(termo));
-
-            if (nomeBate) {
-                idOnuEncontrado = linha.getAttribute('onu');
-                break; // Achou o correto, para o loop
-            }
-        }
-
-        if (!idOnuEncontrado) {
-            // Se achou linhas na tabela (contrato existe), mas o nome não bateu:
-            if (linhasTabela.length > 0) {
-                console.warn(`[HUD Sinal] Contrato ${contrato} encontrado, mas o nome não bateu com "${nomeGeoGrid}". Possível cidade trocada.`);
-                return { sinal: "Selecione o sistema correto no Viaradio" };
-            }
-            // Se o HTML contiver campos de login, a sessão caiu
-            if (responseSearch.responseText.includes("name=\"login\"") || responseSearch.responseText.includes("name=\"senha\"")) {
-                 return { sinal: "Fazer Login" };
-            }
-            return { sinal: "Não Encontrado" };
-        }
-
-        if (controller.signal.aborted) return { sinal: "Cancelado" };
-
-        // --- PASSO 3: BUSCAR DADOS TÉCNICOS (ONUS) ---
-        showHudToastProgress(`Sinal: Obtendo dados técnicos...`);
-
-        const responseOnus = await new Promise((resolve, reject) => {
-            GM_xmlhttpRequest({
-                method: "GET",
-                url: `${JUPITER_API_URL_ONUS}?id=${idOnuEncontrado}`,
-                timeout: 15000,
-                anonymous: false,
-                onload: resolve,
-                onerror: reject,
-                ontimeout: reject,
-            });
-        });
-
-        let jsonOnus;
-        try {
-            jsonOnus = JSON.parse(responseOnus.responseText);
-        } catch (e) {
-            return { sinal: "Erro JSON" };
-        }
-
-        if (jsonOnus.success !== "1" || !jsonOnus.onus || jsonOnus.onus.length === 0) {
-            return { sinal: "Sem Dados ONU" };
-        }
-
-        const dadosOnus = jsonOnus.onus[0];
-
-        if (controller.signal.aborted) return { sinal: "Cancelado" };
-
-        // --- PASSO 4: MEDIR O SINAL ---
-        showHudToastProgress(`Sinal: Medindo dBm...`);
-
-        const params = new URLSearchParams();
-        for (const key in dadosOnus) {
-            params.append(key, dadosOnus[key]);
-        }
-        // Garante o ID correto na chamada final
-        if(!params.has('id')) params.append('id', idOnuEncontrado);
-
-        const responseSignal = await new Promise((resolve, reject) => {
-            GM_xmlhttpRequest({
-                method: "GET",
-                url: `${JUPITER_API_URL_SIGNAL}?${params.toString()}`,
-                timeout: 60000, // Timeout maior para leitura de sinal
-                anonymous: false,
-                onload: resolve,
-                onerror: reject,
-                ontimeout: reject,
-            });
-        });
-
-        let jsonSignal;
-        try {
-            jsonSignal = JSON.parse(responseSignal.responseText);
-        } catch (e) {
-             return { sinal: "Erro API" };
-        }
-
-        if (jsonSignal.status !== "1") {
-            return { sinal: "Sem Leitura" };
-        }
-
-        const sinal = jsonSignal.sinal || "N/A";
-        return { sinal };
-
-    } catch (e) {
-        if (e.name === 'AbortError' || controller.signal.aborted) {
-            return { sinal: "Cancelado" };
-        }
-        console.error(`[HUD Sinal] Erro Crítico:`, e);
-        return { sinal: "Erro Crítico" };
-    }
-}
-
-/**
- * (ATUALIZADO v3.23 - Correção de Crash no Cancelamento)
- * Usa referência local do controller para evitar erro de 'null' em promises pendentes.
- */
-async function verificarNivelDeSinal(idsParaConsultar, btnElement) {
-    // --- LÓGICA DE CANCELAMENTO (GLOBAL) ---
-    if (sinalSearchController) {
-        sinalSearchController.abort();
-        sinalSearchController = null;
-        showHudToast("Pesquisa interrompida.", 'warning');
-
-        // Reseta visualmente
-        document.querySelectorAll('.hud-btn-small').forEach(btn => {
-            btn.textContent = 'Sinal';
-            btn.disabled = false;
-            delete btn.dataset.searching;
-        });
-
-        hideHudToastProgress();
-        return;
-    }
-
-    if (!idsParaConsultar || idsParaConsultar.length === 0) {
-        showHudToast("Nenhum cliente ativo nesta rede.", 'warning');
-        return;
-    }
-
-    // --- PREPARAÇÃO ---
-    // Cria o controlador e guarda numa constante LOCAL
-    // Isso impede que o código quebre se a variável global for zerada
-    const currentController = new AbortController();
-    sinalSearchController = currentController; // Atualiza a global
-
-    if (btnElement) {
-        btnElement.textContent = 'Cancelar';
-        btnElement.dataset.searching = "true";
-    }
-
-    let clientesConsultados = 0;
-    let sinalPromises = [];
-
-    showHudToastProgress(`Sinal: Iniciando busca na rede... 0/${idsParaConsultar.length}`);
-
-    for (const idCliente of idsParaConsultar) {
-        // Verifica a referência local, que nunca será null dentro deste escopo
-        if (currentController.signal.aborted) break;
-
-        const consulta = buscarSinal(idCliente, currentController).then(resultado => {
-            // Se foi cancelado, não atualiza mais nada (evita toast fantasma)
-            if (currentController.signal.aborted) return;
-
-            clientesConsultados++;
-
-            if (infoClientes[idCliente]) {
-                infoClientes[idCliente].nivelSinal = resultado.sinal;
-            }
-
-            const msg = `Sinal: Processando... ${clientesConsultados}/${idsParaConsultar.length}`;
-            showHudToastProgress(msg);
-
-            return resultado;
-        }).catch(e => {
-            // Se foi cancelado, ignora o erro silenciosamente
-            if (currentController.signal.aborted) return;
-
-            clientesConsultados++;
-            infoClientes[idCliente].nivelSinal = "Erro API";
-            return { sinal: "Erro API" };
-        });
-        sinalPromises.push(consulta);
-    }
-
-    // Aguarda todas as chamadas terminarem (ou serem canceladas)
-    await Promise.all(sinalPromises.map(p => p.catch(e => null)));
-
-    // --- FINALIZAÇÃO ---
-    // Verifica se ESTA execução específica foi abortada
-    if (!currentController.signal.aborted) {
-        hideHudToastProgress();
-        finalizarHud();
-        showHudToast(`Verificação da rede concluída.`, 'success');
-
-        // Limpeza de sucesso
-        sinalSearchController = null;
-        if (btnElement) {
-            btnElement.textContent = 'Sinal';
-            delete btnElement.dataset.searching;
-            btnElement.disabled = false;
-        }
-    } else {
-        // Se foi abortada, garantimos que o toast de progresso suma
-        hideHudToastProgress();
-    }
-}
-
-    // --- FIM DA LÓGICA DO BOTÃO WI-FI ---
-
-    /** (CORREÇÃO FINAL) Referência global para o Toast de Progresso */
-    let progressToastElement = null;
-
-    /** * (CORRIGIDO E SIMPLIFICADO) Mostra ou atualiza uma notificação toast de progresso */
-    function showHudToastProgress(message) {
-        // 1. Remove qualquer toast de erro/sucesso existente
-        document.querySelector('.hud-toast-notification:not(#hud-progress-toast)')?.remove();
-
-        // 2. Se o elemento de progresso não existe, cria
-        if (!progressToastElement) {
-            progressToastElement = document.createElement('div');
-            progressToastElement.id = 'hud-progress-toast';
-            progressToastElement.className = 'hud-toast-notification hud-element';
-
-            // --- ESTILOS DE VISIBILIDADE IMEDIATA E Z-INDEX MÁXIMO ---
-            Object.assign(progressToastElement.style, {
-                backgroundColor: 'var(--hud-accent)',
-
-                // Posição Final (garantindo que ele está visível)
-                top: '40px',
-                opacity: '1', // Visibilidade imediata
-
-                // Garantias de Empilhamento e Posição
-                position: 'fixed',
-                zIndex: '2147483647', // MÁXIMO Z-INDEX
-
-                // Garante que a transição de entrada/saída é mantida
-                transition: 'opacity 0.3s, top 0.3s',
-
-                minWidth: '250px',
-                textAlign: 'center'
-            });
-
-            // 3. Anexa ao corpo. O Toast AGORA APARECE IMEDIATAMENTE (sem animação de entrada)
-            document.body.appendChild(progressToastElement);
-        }
-
-        // 4. Atualiza a mensagem
-        progressToastElement.textContent = message;
-    }
-
-    /** (CORRIGIDO E SIMPLIFICADO) Remove o Toast de Progresso */
-    function hideHudToastProgress() {
-        if (progressToastElement) {
-            // Animação de saída manual
-
-            // 1. Inicia a animação de saída (muda opacidade e posição)
-            progressToastElement.style.opacity = '0';
-            progressToastElement.style.top = '10px'; // Move para fora
-
-            // 2. Remove o elemento após o tempo da transição
-            setTimeout(() => {
-                progressToastElement?.remove();
-                progressToastElement = null; // Zera a referência
-            }, 300); // 300ms corresponde ao tempo da transição (transition: 0.3s)
-        }
-    }
-
-    function aplicarPatchMarcadores() {
-    console.log("[HUD Patch] Aplicando correção de dependência fantasma em mudaMarcadoresCabo...");
-
-    // O código abaixo roda no contexto da página (unsafeWindow) para ter acesso às variáveis nativas
-    const patchScript = `
-    (function() {
-        // Salva a original por segurança (opcional, mas boa prática)
-        const originalMudaMarcadoresCabo = window.mudaMarcadoresCabo;
-
-        // Sobrescrevemos a função nativa
-        window.mudaMarcadoresCabo = function(ficha, indice, over) {
-
-            // Flag para evitar loop infinito de requisições no mesmo cabo
-            if (jsonPrincipal[ficha][indice].__reparando === true) {
-                return;
-            }
-
-            var erro = '';
-
-            // --- LÓGICA ORIGINAL (REPLICADA) ---
-            for(var i in jsonPrincipal[ficha][indice].points){
-
-                // verifica se é diferente de ponto guia
-                if(jsonPrincipal[ficha][indice].points[i].cd != ''){
-
-                    var codigoMarcador = jsonPrincipal[ficha][indice].points[i].cd
-                    var fichaMarcador = retornaFicha(codigoMarcador);
-                    var indiceMarcador = retornaIndice(fichaMarcador, codigoMarcador);
-
-                    // verifica se o marcador foi encontrado
-                    if(indiceMarcador != -1){
-
-                        // LÓGICA ORIGINAL DE HOVER
-                        if(jsonPrincipal[fichaMarcador][indiceMarcador].marker && jsonPrincipal[fichaMarcador][indiceMarcador].marker.draggable == false){
-
-                            var icone = retornaIcone(jsonPrincipal[fichaMarcador][indiceMarcador].bType);
-
-                            if(over == true){
-                                icone = icone+'_hover';
-                            }
-
-                            var iconeOptions = {
-                              url: 'i/m/'+icone+'.png',
-                              size: new google.maps.Size(37, 39),
-                              anchor: new google.maps.Point(20, 20)
-                            };
-
-                            var opcoes = {
-                                icon: iconeOptions,
-                            };
-
-                            jsonPrincipal[fichaMarcador][indiceMarcador].marker.setOptions(opcoes)
-                        }
-
-                    } else {
-                        // --- AQUI ESTÁ O PULO DO GATO (MODIFICAÇÃO) ---
-
-                        console.warn("[HUD Auto-Repair] Dependência faltando detectada: " + codigoMarcador + " no cabo " + jsonPrincipal[ficha][indice].cd);
-
-                        // Marca o cabo como "em reparo" para não disparar isso 100x por segundo
-                        jsonPrincipal[ficha][indice].__reparando = true;
-
-                        // 1. Cria a estrutura que o completaJson espera
-                        var itemCaboParaRecarregar = {
-                            cd: jsonPrincipal[ficha][indice].cd,
-                            sg: jsonPrincipal[ficha][indice].sg || '',
-                            id: jsonPrincipal[ficha][indice].cd + '@AutoRepair' // ID Fictício
-                        };
-
-                        // 2. Chama o completaJson DIRETAMENTE.
-                        // Isso pula a verificação "verificaSelectedItens" que impediria o reload.
-                        // Argumentos: (jsonJava, cdAbrir, deveCentralizar, carregamentos)
-                        // Passamos false no final para não aparecer a barra de carregamento intrusiva
-                        if (typeof completaJson === 'function') {
-                            completaJson([itemCaboParaRecarregar], "", false, false);
-
-                            // Feedback visual discreto (Opcional)
-                            if (typeof criaAlerta === 'function') {
-                                // criaAlerta("mensagem", "ativa", "Sincronizando dependências...");
-                                // setTimeout(() => criaAlerta("mensagem", "cancela"), 1000);
-                            }
-                        }
-
-                        // Remove a flag de reparo após 5 segundos (tempo para a requisição voltar)
-                        setTimeout(function() {
-                             if(jsonPrincipal[ficha] && jsonPrincipal[ficha][indice]) {
-                                jsonPrincipal[ficha][indice].__reparando = false;
-                                // Opcional: tentar aplicar o hover novamente
-                                // mudaMarcadoresCabo(ficha, indice, over);
-                             }
-                        }, 5000);
-
-                        // Interrompe o loop e a função para não gerar o erro nativo
-                        return;
-                        // ----------------------------------------------
-                    }
-                }
-            }
-
-            // verifica se teve erros (mantido do original, caso algo passe)
-            if((erro != '') && (over == true)){
-                criaAlerta("mensagem", "ativa", erro);
-            }
-        };
-
-        console.log("[HUD Patch] mudaMarcadoresCabo sobrescrito com sucesso.");
-    })();
-    `;
-
-    const script = document.createElement('script');
-    script.textContent = patchScript;
-    (document.head || document.documentElement).appendChild(script);
-    script.remove();
-}
-
-    /** (NOVO) Mostra uma notificação toast personalizada */
-    function showHudToast(message, type = 'error') {
-        // Remove qualquer toast existente
-        document.querySelector('.hud-toast-notification')?.remove();
-
-        const toast = document.createElement('div');
-        toast.className = 'hud-toast-notification hud-element';
-        toast.textContent = message;
-
-        // (Opcional: mudar a cor com base no tipo)
-        if (type === 'success') {
-            toast.style.backgroundColor = 'var(--hud-green)';
-        } else if (type === 'warning') {
-            toast.style.backgroundColor = 'var(--hud-orange)';
-        } else {
-            toast.style.backgroundColor = 'var(--hud-red)';
-        }
-
-        document.body.appendChild(toast);
-
-        // Animação de entrada
-        setTimeout(() => {
-            toast.style.opacity = '1';
-            toast.style.top = '20px'; // Desce para a posição final
-        }, 10);
-
-        // Animação de saída
-        setTimeout(() => {
-            toast.style.opacity = '0';
-            toast.style.top = '10px';
-            // Remove o elemento após a animação
-            setTimeout(() => {
-                toast.remove();
-            }, 300);
-        }, 3000); // Toast fica visível por 3 segundos
-    }
-
-    /** (NOVO) Injeta os estilos CSS do HUD na página, uma única vez. */
-    function injetarEstilosGlobais() {
-        // Se os estilos já foram injetados, não faz nada.
-        if (document.getElementById('hud-global-styles')) {
-            return;
-        }
-
-        console.log('[HUD Script] Injetando estilos CSS globais...');
-        const styleSheet = document.createElement("style");
-        styleSheet.id = "hud-global-styles"; // ID único
-        styleSheet.innerText = cssStyles;
-        document.head.appendChild(styleSheet);
-    }
-
-    function debounce(func, delay) {
-        let timeout;
-        return function(...args) {
-            clearTimeout(timeout);
-            timeout = setTimeout(() => func.apply(this, args), delay);
-        };
-    }
-
-    /**
-     * Carrega as configurações salvas do localStorage (MODIFICADO)
-     */
     function loadSettings() {
         let saved = {};
         try {
             const savedJson = localStorage.getItem(STORAGE_KEY);
-            if (savedJson) {
-                saved = JSON.parse(savedJson);
-            }
-        } catch (e) {
-            console.error("Erro ao carregar configurações do HUD:", e);
-        }
-
-        const settings = { ...DEFAULT_SETTINGS, ...saved };
-
-        // (NOVO) Aplica o modo claro imediatamente ao carregar as configs
-        toggleModoClaro(settings.modoClaro);
-
-        return settings;
+            if (savedJson) saved = JSON.parse(savedJson);
+        } catch (e) { console.error(e); }
+        return { ...DEFAULT_SETTINGS, ...saved };
     }
 
-    /**
-     * Salva o estado atual das configurações no localStorage (MODIFICADO)
-     */
     function saveSettings() {
-        // Filtra o 'state' para salvar APENAS as chaves de DEFAULT_SETTINGS
-        const settingsToSave = {};
-        for (const key in DEFAULT_SETTINGS) {
-            // Verifica se a chave existe no 'state' antes de salvar
-            if (Object.hasOwnProperty.call(state, key)) {
-                settingsToSave[key] = state[key];
+        if (window.__hudState__) {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(window.__hudState__));
+            if (typeof UIManager !== 'undefined') {
+                UIManager.renderClientList();
             }
-        }
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(settingsToSave));
-    }
-
-    function toggleModoClaro(ativar) {
-        if (ativar) {
-            document.body.classList.add('hud-light-mode');
-        } else {
-            document.body.classList.remove('hud-light-mode');
         }
     }
 
-    async function copyToClipboard(text, successElement) {
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-            try {
-                await navigator.clipboard.writeText(text);
-                if (successElement) {
-                    const originalContent = successElement.innerHTML;
-                    successElement.innerHTML = '✅';
-                    setTimeout(() => { successElement.innerHTML = originalContent; }, 1500);
-                }
-                return;
-            } catch (err) {
-                console.warn('Cópia moderna falhou, usando fallback.', err);
-            }
-        }
-        const ta = document.createElement("textarea");
-        ta.value = text;
-        Object.assign(ta.style, { position: "fixed", top: "-9999px", left: "-9999px", opacity: '0' });
-        document.body.appendChild(ta);
-        ta.select();
-        try {
-            const successful = document.execCommand('copy');
-            if (successful && successElement) {
-                const originalContent = successElement.innerHTML;
-                successElement.innerHTML = '✅';
-                setTimeout(() => { successElement.innerHTML = originalContent; }, 1500);
-            } else if (!successful) {
-                prompt("Falha ao copiar. Copie manualmente:", text);
-            }
-        } catch (err) {
-            prompt("Erro ao copiar. Copie manualmente:", text);
-        } finally {
-            document.body.removeChild(ta);
-        }
-    }
-
-    function createDraggablePanel(id, title, contentElement, position) {
-        const panel = document.createElement("div");
-        panel.id = id;
-        panel.className = "hud-panel hud-element";
-        Object.assign(panel.style, {
-            top: `${position.top}px`,
-            left: `${position.left}px`,
-            width: `${position.width}px`,
-            height: `${position.height}px`,
-        });
-
-        const header = document.createElement("div");
-        header.className = "hud-header";
-        header.innerHTML = `<strong>${title}</strong>`;
-
-        // --- (INÍCIO DA MODIFICAÇÃO) ---
-        // Se for o painel de Configurações, adiciona um botão Salvar
-        if (id === 'blocoPredefinicoesHUD') {
-            const saveBtn = document.createElement("button");
-            saveBtn.className = 'hud-btn'; // Reutiliza a classe de botão
-            saveBtn.title = 'Salvar Configurações Manualmente';
-            saveBtn.innerHTML = 'Salvar';
-
-            // Estilo para o botão de texto (para caber "Salvar")
-            Object.assign(saveBtn.style, {
-                width: 'auto',      // Largura automática
-                padding: '4px 8px', // Espaçamento interno
-                height: '30px',     // Altura padrão
-                marginLeft: 'auto'  // Joga ele para a direita (antes do 'X')
-            });
-
-            // Adiciona a função de salvar
-            saveBtn.onclick = () => {
-                try {
-                    saveSettings(); // Chama a função que já usamos!
-                    // Feedback visual
-                    saveBtn.innerHTML = 'Salvo ✅';
-                    saveBtn.style.color = 'var(--hud-green)';
-                    setTimeout(() => {
-                        saveBtn.innerHTML = 'Salvar';
-                        saveBtn.style.color = 'var(--hud-text)';
-                    }, 2000);
-                } catch (e) {
-                    saveBtn.innerHTML = 'Erro!';
-                    saveBtn.style.color = 'var(--hud-red)';
-                    console.error("[HUD Script] Erro ao salvar configurações manualmente:", e);
-                }
-            };
-            header.appendChild(saveBtn);
-        }
-        // --- (FIM DA MODIFICAÇÃO) ---
-
-        const closeBtn = document.createElement("button");
-        closeBtn.className = "hud-btn-close";
-        closeBtn.innerHTML = "×";
-
-        // (MODIFICADO) Ajusta a margem do botão 'X'
-        // Se for o painel de config, damos uma margem pequena; senão, 'auto'
-        if (id === 'blocoPredefinicoesHUD') {
-            closeBtn.style.marginLeft = "4px";
-        } else {
-            closeBtn.style.marginLeft = "auto";
-        }
-
-        closeBtn.onclick = () => {
-            panel.remove();
-            if (id === 'blocoNotasHUD') state.notasAtivo = false;
-            if (id === 'blocoPredefinicoesHUD') state.configAtivo = false;
-            if (id === 'hudAdicionarEquipamento') state.cadastroEquipamentoAtivo = false;
+    function debounce(func, wait) {
+        let timeout;
+        return function(...args) {
+            clearTimeout(timeout);
+            timeout = setTimeout(() => func.apply(this, args), wait);
         };
-        header.appendChild(closeBtn);
-        panel.appendChild(header);
-        panel.appendChild(contentElement);
-        document.body.appendChild(panel);
-
-        let offsetX, offsetY, isDragging = false;
-        header.addEventListener("mousedown", e => {
-            isDragging = true;
-            const r = panel.getBoundingClientRect();
-            offsetX = e.clientX - r.left;
-            offsetY = e.clientY - r.top;
-            document.body.style.userSelect = "none";
-        });
-        document.addEventListener("mousemove", e => {
-            if (!isDragging) return;
-            panel.style.left = `${e.clientX - offsetX}px`;
-            panel.style.top = `${e.clientY - offsetY}px`;
-        });
-        document.addEventListener("mouseup", () => {
-            isDragging = false;
-            document.body.style.userSelect = "auto";
-        });
-        return panel;
     }
+
+    window.__hudState__ = loadSettings();
+    window.saveSettings = saveSettings;
 
     /**
-     * Cria um Checkbox que salva automaticamente (MODIFICADO)
+     * =======================================================================================
+     * MODULE: MAP INTERCEPTOR
+     * Description: Captura a instância do Google Maps para permitir o clique.
+     * =======================================================================================
      */
-    function createCheckbox(id, label, checked, onChange) {
-        const container = document.createElement("div");
-        const labelEl = document.createElement("label");
-        labelEl.className = 'hud-checkbox-label';
-        const checkbox = document.createElement("input");
-        checkbox.type = "checkbox";
-        checkbox.id = id;
-        checkbox.checked = checked;
+    const mapScript = document.createElement('script');
+    mapScript.textContent = `
+    (function(){
+        window.__googleMapInstancia__ = window.__googleMapInstancia__ || null;
 
-        checkbox.addEventListener("change", () => {
-            onChange(checkbox.checked); // 1. Atualiza o estado (state)
-            saveSettings();          // 2. Salva o novo estado no localStorage
-        });
-
-        labelEl.appendChild(checkbox);
-        labelEl.appendChild(document.createTextNode(label));
-        container.appendChild(labelEl);
-        return container;
-    }
-
-    /**
-     * Lógica de pesquisa que será "debounced" (ADICIONADO)
-     */
-    function performSearch() {
-        const searchInput = document.getElementById('hud-search-field');
-        // Se o HUD não existir ou o input não for encontrado, não faz nada
-        if (!searchInput) return;
-
-        const query = searchInput.value.trim();
-        state.searchQuery = query; // Salva o valor da pesquisa no estado global
-        const allRows = document.querySelectorAll('.hud-client-row');
-
-        // Se a pesquisa estiver vazia, remove todos os destaques
-        if (!query) {
-            allRows.forEach(row => row.classList.remove('highlighted'));
-            return;
+        // Tenta capturar se já existir
+        if (typeof map !== 'undefined' && map instanceof google.maps.Map) {
+            window.__googleMapInstancia__ = map;
         }
 
-        // Itera por todas as linhas de cliente
-        allRows.forEach(row => {
-            const contractSpan = row.querySelector('.contract');
-            if (contractSpan) {
-                const contractNumber = contractSpan.textContent.trim();
-                // Verifica se o número do contrato INCLUI a consulta
-                if (contractNumber.includes(query)) {
-                    row.classList.add('highlighted');
-                } else {
-                    row.classList.remove('highlighted');
-                }
-            }
-        });
-    }
-
-    // Cria uma versão "debounced" da função de pesquisa (ADICIONADO)
-    const debouncedSearch = debounce(performSearch, 300); // 300ms de espera
-
-    // Função de REMOVER AS DIVS INDESEJADAS
-    function atualizarElementosIndesejados() {
-        const seletores = "div.componente-topo > div.conteudo > div.bloco1, .componente-rodape";
-        const elementos = document.querySelectorAll(seletores);
-        const btn_ajuda = document.querySelector('#launcher')
-        if (btn_ajuda) {btn_ajuda.remove()};
-        // 'none' se for para remover, '' (vazio) para restaurar ao padrão
-        const displayValor = state.removerIndesejado ? 'none' : '';
-        elementos.forEach(el => {
-            el.style.display = displayValor;
-        });
-    }
-
-    function handleMapLink(lat, lon, successElement) {
-        if (!lat || !lon) {
-            console.warn("HUD Script: handleMapLink chamado sem coordenadas.");
-            if (successElement) { // Pisca a vermelho se falhar
-                successElement.style.borderColor = 'var(--hud-red)';
-                setTimeout(() => successElement.style.borderColor = 'var(--hud-border)', 1000);
-            }
-            return;
-        }
-
-        // Verifica o estado que o utilizador definiu
-        if (state.copiarCoordenadas) {
-            // Copia apenas as coordenadas
-            copyToClipboard(`${lat}, ${lon}`, successElement);
-        } else {
-            // Cria o link
-            const link = `https://www.google.com/maps?q=${lat},${lon}`;
-            if (state.abrirNovaGuia) {
-                window.open(link, "_blank");
-            } else {
-                copyToClipboard(link, successElement);
-            }
-        }
-    }
-
-    /**
-     * (NOVO) Função chamada quando o mapa é clicado no modo de captura.
-     */
-    function handleMapCaptureClick(event) {
-        const lat = event.latLng.lat();
-        const lng = event.latLng.lng();
-
-        // Encontra o botão de captura para o feedback de 'sucesso'
-        const btnCaptura = document.getElementById('capturaMapaBtn');
-
-        // 1. Usa a nossa nova função central
-        handleMapLink(lat, lng, btnCaptura);
-
-        // 2. (NOVO) Desativa o modo de captura automaticamente
-        //    Como o modo está ATIVO, chamá-lo irá desativá-lo.
-        toggleMapCaptureMode();
-    }
-
-    /**
-     * (NOVO) Ativa/Desativa o modo de captura de coordenadas
-     */
-    function toggleMapCaptureMode() {
-        // Usa unsafeWindow quando disponível (script em sandbox)
-        const gw = (typeof unsafeWindow !== 'undefined') ? unsafeWindow : window;
-
-        if (!gw.__googleMapsApiDisponivel__ || !gw.__googleMapInstancia__) {
-            console.error("HUD Script: Captura falhou. API do Google ou Instância do Mapa não encontradas.");
-            return;
-        }
-
-        const map = gw.__googleMapInstancia__;
-        const btnCaptura = document.getElementById('capturaMapaBtn');
-
-        // Inverte o estado global na página (lembrando que o listener real vive na instância do mapa)
-        gw.__mapCaptureActive__ = !gw.__mapCaptureActive__;
-
-        if (gw.__mapCaptureActive__) {
-            console.log('%c[HUD Script] MODO DE CAPTURA ATIVADO.', 'color: #98c379; font-weight: bold;');
-            // Guarda o listener criado no objeto da página (retornado pelo addListener)
-            gw.__mapClickListener__ = map.addListener('click', handleMapCaptureClick);
-            // Muda cursor
-            try { map.setOptions({ draggableCursor: 'crosshair' }); } catch (e) {}
-            if (btnCaptura) btnCaptura.classList.add('active');
-        } else {
-            console.log('%c[HUD Script] MODO DE CAPTURA DESATIVADO.', 'color: #e06c75; font-weight: bold;');
-            try {
-                if (gw.__mapClickListener__) {
-                    // removeListener precisa ser chamado no contexto da API do google.maps na página
-                    google.maps.event.removeListener(gw.__mapClickListener__);
-                    gw.__mapClickListener__ = null;
-                }
-                map.setOptions({ draggableCursor: null });
-            } catch (e) {}
-            if (btnCaptura) btnCaptura.classList.remove('active');
-        }
-    }
-
-    // --- 3. ESTADO GLOBAL E DADOS COLETADOS ---
-
-    // ESTADO GLOBAL (MODIFICADO)
-    // Carrega as configurações salvas (persistentes)
-    const persistentSettings = loadSettings();
-    // O 'state' agora é uma combinação das configurações salvas
-    // e do estado de tempo de execução (que sempre começa como falso)
-    window.__hudState__ = {
-        ...persistentSettings,
-        notasAtivo: false,
-        configAtivo: false,
-        cadastroEquipamentoAtivo: false,
-        cadastroEquipamentoFallback: false,
-        searchQuery: '',
-    };
-    const state = window.__hudState__;
-
-    // DADOS COLETADOS (persistentes)
-    let localizacao = [];
-    let equipamentosInfo = {};
-    let equipamentosOrdem = [];
-    let infoClientes = {};
-    let isInitialLoadComplete = false;
-    let ultimaAPI;
-    let ultimoCodigoPoste = null;
-    let ultimoCodigoEquipamentoPai = null;
-    let hudUserInteracted = false;
-
-    // --- 4. LÓGICA DE CRIAÇÃO E REMOÇÃO DO HUD ---
-
-    /**
-     * (MODIFICADO) Remove apenas os elementos do HUD PRINCIPAL da página.
-     */
-    function removerHUD() {
-        // Remove o painel principal
-        document.querySelector("#hudPainelTeste")?.remove();
-
-        // Remove os painéis "satélite" (Notas e Config)
-        document.querySelector("#blocoNotasHUD")?.remove();
-        document.querySelector("#blocoPredefinicoesHUD")?.remove();
-
-        // (NOTA: Não removemos #hudAdicionarEquipamento aqui,
-        // pois ele tem seu próprio botão 'x' para fechar)
-
-        window.__hudAtivo__ = false; // Flag do HUD principal
-        state.notasAtivo = false;
-        state.configAtivo = false;
-        isInitialLoadComplete = false;
-    }
-
-    /**
-     * Cria e injeta todo o painel do HUD na página.
-     */
-    function criarHUD() {
-        if (window.__hudAtivo__) return; // Já está ativo
-        window.__hudAtivo__ = true;
-
-        // --- LIMPEZA DA PÁGINA ORIGINAL ---
-        atualizarElementosIndesejados();
-        //document.querySelectorAll(".menu-lateral-container, .menu-lateral-direito.menu-lateral-rota.absolute").forEach(el => { el.style.overflow = "auto"; });
-
-        // --- PAINEL PRINCIPAL (HUD) ---
-        const painel = document.createElement("div");
-        painel.id = "hudPainelTeste";
-        painel.className = "hud-panel hud-element";
-        Object.assign(painel.style, {
-            bottom: "12px",
-            right: "12px"
-            // A largura será definida automaticamente
-        });
-
-        const cabecalho = document.createElement("div");
-        cabecalho.className = "hud-header";
-        const icone = document.createElement("img");
-        icone.className = "hud-icon";
-        icone.src = document.querySelector('link[rel*="icon"]')?.href || "";
-        const titulo = document.createElement("strong");
-        titulo.textContent = ":: Geo Grid Maps ::";
-        cabecalho.appendChild(icone);
-        cabecalho.appendChild(titulo);
-
-        const buttonsGroup = document.createElement('div');
-        buttonsGroup.className = 'hud-buttons-group';
-
-        function createButton(id, icon, title) {
-            const btn = document.createElement("button");
-            btn.id = id;
-            btn.className = "hud-btn";
-            btn.title = title;
-            btn.innerHTML = icon;
-            buttonsGroup.appendChild(btn);
-            return btn;
-        }
-
-        // ORDEM DOS BOTÕES ATUALIZADA
-
-        const btnPesquisa = createButton('pesquisaBtn', ICONS.search, 'Ocultar/Exibir Pesquisa');
-        const btnWifi = createButton('verificarWifiBtn', ICONS.wifi, 'Verificar Conectividade');
-        // NOVO BOTÃO DE SINAL > Migrado pra ao lado do nome das redes
-        //const btnSignal = createButton('verificarSignalBtn', ICONS.signal, 'Verificar Nível de Sinal');
-
-        const expandirBtn = createButton('expandirBtn', ICONS.notes, 'Anotações');
-        const btnCopiar = createButton('copiarContratosBtn', ICONS.copy, 'Copiar Contratos');
-        const btnConfig = createButton('configBtn', ICONS.settings, 'Configurações');
-        const btnMapa = createButton('abrirMapaBtn', ICONS.map, 'Localização dessa Caixa');
-        const btnCaptura = createButton('capturaMapaBtn', ICONS.crosshair, 'Capturar Coordenadas do Mapa');
-
-        const btnFechar = document.createElement("button");
-        btnFechar.className = 'hud-btn-close';
-        btnFechar.innerHTML = '×';
-        btnFechar.title = 'Fechar HUD';
-        buttonsGroup.appendChild(btnFechar);
-
-        cabecalho.appendChild(buttonsGroup);
-        painel.appendChild(cabecalho);
-
-        const conteudoDiv = document.createElement("div");
-        conteudoDiv.className = "hud-content";
-        conteudoDiv.textContent = "Aguardando abertura de equipamento...";
-        painel.appendChild(conteudoDiv);
-        document.body.appendChild(painel);
-
-        // --- LÓGICA DE DRAG & DROP E REDIMENSIONAMENTO ---
-        let offsetX, offsetY, isDragging = false;
-        cabecalho.addEventListener("mousedown", e => {
-            if (e.target !== cabecalho && e.target !== titulo && e.target !== icone) return;
-            isDragging = true;
-            const r = painel.getBoundingClientRect();
-            offsetX = e.clientX - r.left;
-            offsetY = e.clientY - r.top;
-            document.body.style.userSelect = "none";
-        });
-
-        const resizers = ['top', 'bottom', 'left', 'right', 'top-left', 'top-right', 'bottom-left', 'bottom-right'];
-        resizers.forEach(direction => {
-            const resizer = document.createElement('div');
-            resizer.className = `resizer ${direction} hud-element`;
-            painel.appendChild(resizer);
-
-            resizer.addEventListener('mousedown', function(e) {
-                e.preventDefault();
-                initResize(e, direction);
-            });
-        });
-
-        let startX, startY, startWidth, startHeight, startLeft, startTop;
-        let resizeDirection;
-
-        function initResize(e, direction) {
-            resizeDirection = direction;
-            startX = e.clientX;
-            startY = e.clientY;
-            const rect = painel.getBoundingClientRect();
-            startWidth = rect.width;
-            startHeight = rect.height;
-            startLeft = rect.left;
-            startTop = rect.top;
-
-            document.documentElement.addEventListener('mousemove', doResize, false);
-            document.documentElement.addEventListener('mouseup', stopResize, false);
-            document.body.style.userSelect = 'none';
-        }
-
-        function doResize(e) {
-            const deltaX = e.clientX - startX;
-            const deltaY = e.clientY - startY;
-            const minWidth = 409;
-            const minHeight = 150;
-
-            if (resizeDirection.includes('right')) {
-                const newWidth = startWidth + deltaX;
-                if (newWidth > minWidth) painel.style.width = newWidth + 'px';
-            }
-            if (resizeDirection.includes('bottom')) {
-                const newHeight = startHeight + deltaY;
-                if (newHeight > minHeight) painel.style.height = newHeight + 'px';
-            }
-            if (resizeDirection.includes('left')) {
-                const newWidth = startWidth - deltaX;
-                if (newWidth > minWidth) {
-                    painel.style.width = newWidth + 'px';
-                    painel.style.left = startLeft + deltaX + 'px';
-                }
-            }
-            if (resizeDirection.includes('top')) {
-                const newHeight = startHeight - deltaY;
-                if (newHeight > minHeight) {
-                    painel.style.height = newHeight + 'px';
-                    painel.style.top = startTop + deltaY + 'px';
-                }
-            }
-        }
-
-        function stopResize() {
-            document.documentElement.removeEventListener('mousemove', doResize, false);
-            document.documentElement.removeEventListener('mouseup', stopResize, false);
-            document.body.style.userSelect = 'auto';
-        }
-
-        document.addEventListener("mousemove", e => {
-            if (!isDragging) return;
-            painel.style.left = `${e.clientX - offsetX}px`;
-            painel.style.top = `${e.clientY - offsetY}px`;
-            painel.style.right = "auto";
-            painel.style.bottom = "auto";
-        });
-        document.addEventListener("mouseup", () => {
-            isDragging = false;
-            document.body.style.userSelect = "auto";
-        });
-
-        // --- EVENTOS DOS BOTÕES ---
-
-        // (Existente) Botão Pesquisa Toggle
-        btnPesquisa.addEventListener("click", () => {
-            // 1. Inverte o estado
-            state.searchBarVisible = !state.searchBarVisible;
-            // 2. Salva a preferência
-            saveSettings();
-            // 3. Atualiza a UI (mostra/esconde a barra)
-            const searchBar = document.querySelector(".hud-search-bar");
-            if (searchBar) {
-                searchBar.style.display = state.searchBarVisible ? 'block' : 'none';
-            }
-            // 4. Atualiza a aparência do botão
-            btnPesquisa.classList.toggle('active', state.searchBarVisible);
-        });
-        // Define o estado inicial do botão de pesquisa
-        btnPesquisa.classList.toggle('active', state.searchBarVisible);
-
-        // (NOVO) Botão Wi-Fi
-        btnWifi.addEventListener("click", () => {
-             verificarStatusClientes();
-        });
-
-        // NOVO: Botão Sinal > migrado pra ao lado do nome das redes
-        //btnSignal.addEventListener("click", () => {
-        //     verificarNivelDeSinal();
-        //});
-
-        // (Existente) Botão Fechar
-        btnFechar.addEventListener("click", removerHUD);
-
-        // (Existente) Botão Notas
-        expandirBtn.addEventListener("click", () => {
-            if (state.notasAtivo) {
-                document.querySelector("#blocoNotasHUD")?.remove();
-                state.notasAtivo = false;
-                return;
-            }
-            state.notasAtivo = true;
-            const mainPanelRect = painel.getBoundingClientRect();
-            const content = document.createElement("div");
-            content.className = "hud-content";
-            content.style.padding = '0';
-            const textarea = document.createElement("textarea");
-            Object.assign(textarea.style, {
-                width: '100%', height: '100%', border: 'none', resize: 'none',
-                padding: '8px', fontFamily: 'var(--hud-font)', fontSize: '13px',
-                background: 'var(--hud-bg)', color: 'var(--hud-text)', outline: 'none'
-            });
-            content.appendChild(textarea);
-            createDraggablePanel('blocoNotasHUD', 'Anotações', content, {
-                top: mainPanelRect.top,
-                left: mainPanelRect.left - 300,
-                width: 280,
-                height: mainPanelRect.height
-            });
-        });
-
-        // (Existente) Botão Configurações (COM REORGANIZAÇÃO)
-        btnConfig.addEventListener("click", () => {
-            if (state.configAtivo) {
-                document.querySelector("#blocoPredefinicoesHUD")?.remove();
-                state.configAtivo = false;
-                return;
-            }
-            state.configAtivo = true;
-            const mainPanelRect = painel.getBoundingClientRect();
-            const content = document.createElement("div");
-            content.className = "hud-content";
-
-            // Helper para criar os títulos dos grupos
-            const createSettingsHeader = (title) => {
-                const header = document.createElement("div");
-                header.className = "hud-settings-header";
-                header.textContent = title;
-                return header;
-            };
-
-            // --- Grupo 1: Interface e Exibição ---
-            content.appendChild(createSettingsHeader("Interface e Exibição"));
-
-            content.appendChild(createCheckbox(
-                'modoClaro',
-                'Modo Claro',
-                state.modoClaro,
-                val => {
-                    state.modoClaro = val;
-                    toggleModoClaro(val); // Chama a função que aplica a classe
-                }
-            ));
-
-            content.appendChild(createCheckbox(
-                'searchBarVisible',
-                'Exibir barra de pesquisa',
-                state.searchBarVisible,
-                val => {
-                    state.searchBarVisible = val;
-                    const searchBar = document.querySelector(".hud-search-bar");
-                    if (searchBar) {
-                        searchBar.style.display = val ? 'block' : 'none';
-                    }
-                    const btnPesquisa = document.getElementById('pesquisaBtn');
-                    if (btnPesquisa) {
-                        btnPesquisa.classList.toggle('active', val);
-                    }
-                }
-            ));
-
-            content.appendChild(createCheckbox(
-                'exibirInfoDiagrama',
-                'Informações no GeoGrid (Contrato/Rede)',
-                state.exibirInfoDiagrama,
-                val => {
-                    state.exibirInfoDiagrama = val;
-                    // Se o usuário ativar/desativar, sugerimos um recarregamento
-                    showHudToast(`Alteração aplicada. Recarregue a página (F5) para ver o efeito no diagrama.`, 'warning');
-                }
-            ));
-
-            content.appendChild(createCheckbox(
-                'removerIndesejado',
-                'Ocultar topo e rodapé do site',
-                state.removerIndesejado,
-                val => {
-                    state.removerIndesejado = val;
-                    atualizarElementosIndesejados();
-                }
-            ));
-
-            content.appendChild(createCheckbox(
-                'exibirNomeCliente',
-                'Exibir nome do cliente no HUD',
-                state.exibirNomeCliente,
-                val => {
-                    state.exibirNomeCliente = val;
-                    finalizarHud(); // Redesenha o HUD
-                }
-            ));
-
-            content.appendChild(createCheckbox(
-                'destacarRedesDivergentes',
-                'Destacar redes divergentes',
-                state.destacarRedesDivergentes,
-                val => {
-                    state.destacarRedesDivergentes = val;
-                    finalizarHud(); // Redesenha o HUD
-                }
-            ));
-
-            // --- Grupo 2: Copiar Informações ---
-            content.appendChild(createSettingsHeader("Copiar Informações"));
-
-            // (MOVEMOS o 'copiarCoordenadas' daqui)
-
-            content.appendChild(createCheckbox(
-                'somenteCancelados',
-                'Copiar apenas clientes cancelados',
-                state.somenteCancelados,
-                val => state.somenteCancelados = val
-            ));
-
-            content.appendChild(createCheckbox(
-                'copiarStatus',
-                'Incluir status do cliente',
-                state.copiarStatus,
-                val => state.copiarStatus = val
-            ));
-
-            content.appendChild(createCheckbox(
-                'copiarNomeRede',
-                'Incluir nome da rede',
-                state.copiarNomeRede,
-                val => state.copiarNomeRede = val
-            ));
-
-            // --- Grupo 3: Localização (RENOMEADO) ---
-            content.appendChild(createSettingsHeader("Localização")); // (RENOMEADO)
-
-            // (MOVEMOS para cá) Checkbox de Coordenadas
-            content.appendChild(createCheckbox(
-                'copiarCoordenadas',
-                'Copiar coordenadas (em vez de link)',
-                state.copiarCoordenadas,
-                val => state.copiarCoordenadas = val
-            ));
-
-            content.appendChild(createCheckbox(
-                'abrirNovaGuia',
-                'Abrir mapa em nova guia',
-                state.abrirNovaGuia,
-                val => state.abrirNovaGuia = val
-            ));
-
-            // --- Grupo 4: Cache de Dados ---
-            content.appendChild(createSettingsHeader("Cache de Carregamento"));
-
-            // Container para os botões de Importar/Exportar/Limpar
-            const cacheButtonsContainer = document.createElement('div');
-            cacheButtonsContainer.style.display = 'flex';
-            cacheButtonsContainer.style.flexDirection = 'column'; // Um botão por linha
-            cacheButtonsContainer.style.gap = '8px'; // Espaço entre os botões
-            cacheButtonsContainer.style.marginTop = '5px';
-
-            // --- Botão de EXPORTAR Cache ---
-            const btnExportarCache = document.createElement('button');
-            btnExportarCache.className = 'hud-footer-btn'; // Reutiliza estilo
-            btnExportarCache.textContent = 'Exportar Cache (Backup)';
-            btnExportarCache.style.width = '100%';
-            btnExportarCache.style.backgroundColor = 'var(--hud-accent)'; // Cor azul
-            btnExportarCache.style.borderColor = 'var(--hud-accent)';
-            btnExportarCache.style.color = 'white';
-
-            btnExportarCache.onclick = async () => {
-                if (!cacheDB) {
-                    showHudToast("Erro: O banco de dados do cache não está acessível.");
-                    return;
-                }
-                btnExportarCache.textContent = 'Exportando... (Aguarde)';
-                btnExportarCache.disabled = true;
-
-                try {
-                    // 1. Lê TODOS os itens da tabela 'geoItems'
-                    console.log("[HUD Script - Export] Lendo todos os itens do cache...");
-                    const allItems = await cacheDB.geoItems.query().all().execute();
-                    console.log(`[HUD Script - Export] ${allItems.length} itens lidos.`);
-
-                    if (allItems.length === 0) {
-                        showHudToast("Cache vazio. Nada para exportar.");
-                        btnExportarCache.textContent = 'Cache vazio';
-                        return;
-                    }
-
-                    // 2. Converte para JSON
-                    const jsonString = JSON.stringify(allItems);
-
-                    // 3. Cria um Blob (arquivo em memória)
-                    const blob = new Blob([jsonString], { type: 'application/json' });
-                    const url = URL.createObjectURL(blob);
-
-                    // 4. Cria um link de download invisível e clica nele
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = `geogrid_cache_backup_${getTodayDate()}.json`;
-                    document.body.appendChild(a);
-                    a.click();
-
-                    // 5. Limpa
-                    document.body.removeChild(a);
-                    URL.revokeObjectURL(url);
-
-                    console.log("[HUD Script - Export] Exportação concluída!");
-                    btnExportarCache.textContent = 'Exportado com Sucesso!';
-                    btnExportarCache.style.backgroundColor = 'var(--hud-green)'; // Verde
-                    btnExportarCache.style.borderColor = 'var(--hud-green)';
-
-                } catch (e) {
-                    console.error("[HUD Script - Export] Erro ao exportar cache:", e);
-                    showHudToast("Erro ao exportar: " + e.message);
-                    btnExportarCache.textContent = 'Erro na Exportação';
-                     btnExportarCache.style.backgroundColor = 'var(--hud-red)'; // Vermelho
-                    btnExportarCache.style.borderColor = 'var(--hud-red)';
-                } finally {
-                     // Reseta o botão após alguns segundos
-                    setTimeout(() => {
-                        btnExportarCache.textContent = 'Exportar Cache (Backup)';
-                        btnExportarCache.style.backgroundColor = 'var(--hud-accent)';
-                        btnExportarCache.style.borderColor = 'var(--hud-accent)';
-                        btnExportarCache.disabled = false;
-                    }, 3000);
-                }
-            };
-            cacheButtonsContainer.appendChild(btnExportarCache);
-
-
-            // --- Botão de IMPORTAR Cache ---
-            const btnImportarCache = document.createElement('button');
-            btnImportarCache.className = 'hud-footer-btn'; // Reutiliza estilo
-            btnImportarCache.textContent = 'Importar Cache (Restaurar)';
-            btnImportarCache.style.width = '100%';
-            btnImportarCache.style.backgroundColor = 'var(--hud-orange)'; // Cor laranja
-            btnImportarCache.style.borderColor = 'var(--hud-orange)';
-            btnImportarCache.style.color = 'white';
-
-            btnImportarCache.onclick = () => {
-                if (!cacheDB) {
-                    showHudToast("Erro: O banco de dados do cache não está acessível.");
-                    return;
-                }
-
-                // 1. Cria um input de arquivo invisível
-                const fileInput = document.createElement('input');
-                fileInput.type = 'file';
-                fileInput.accept = '.json, application/json';
-
-                // 2. Define o que fazer quando um arquivo for selecionado
-                fileInput.onchange = async (e) => {
-                    const file = e.target.files[0];
-                    if (!file) return;
-
-                    btnImportarCache.textContent = 'Importando... (Aguarde)';
-                    btnImportarCache.disabled = true;
-
-                    try {
-                        const text = await file.text();
-                        const items = JSON.parse(text);
-
-                        if (!Array.isArray(items)) {
-                             throw new Error("Arquivo JSON inválido. O conteúdo não é um array.");
-                        }
-
-                        console.log(`[HUD Script - Import] Arquivo lido. Importando ${items.length} itens...`);
-
-                        // 3. Limpa o cache antigo antes de importar (Opcional, mas recomendado)
-                        await cacheDB.geoItems.clear();
-
-                        // 4. (O PULO DO GATO) O db.js 'put' aceita um array para bulk-insert
-                        await cacheDB.geoItems.put(items);
-
-                        console.log("[HUD Script - Import] Importação concluída!");
-                        btnImportarCache.textContent = 'Importado com Sucesso!';
-                        btnImportarCache.style.backgroundColor = 'var(--hud-green)'; // Verde
-                        btnImportarCache.style.borderColor = 'var(--hud-green)';
-                        showHudToast(`Sucesso! ${items.length} itens importados. Recarregue a página.`);
-
-                    } catch (err) {
-                        console.error("[HUD Script - Import] Erro ao importar cache:", err);
-                        showHudToast("Erro ao importar: " + err.message);
-                        btnImportarCache.textContent = 'Erro na Importação';
-                        btnImportarCache.style.backgroundColor = 'var(--hud-red)'; // Vermelho
-                        btnImportarCache.style.borderColor = 'var(--hud-red)';
-                    } finally {
-                        // Reseta o botão
-                        setTimeout(() => {
-                            btnImportarCache.textContent = 'Importar Cache (Restaurar)';
-                            btnImportarCache.style.backgroundColor = 'var(--hud-orange)';
-                            btnImportarCache.style.borderColor = 'var(--hud-orange)';
-                            btnImportarCache.disabled = false;
-                        }, 3000);
-                    }
+        // Hook no construtor para capturar instâncias futuras
+        const checkGoogle = setInterval(function() {
+            if (typeof google === 'object' && typeof google.maps === 'object' && typeof google.maps.Map === 'function') {
+                clearInterval(checkGoogle);
+                const originalMap = google.maps.Map;
+                google.maps.Map = function() {
+                    const instance = new originalMap(...arguments);
+                    window.__googleMapInstancia__ = instance;
+                    return instance;
                 };
-
-                // 5. Clica no input de arquivo invisível para abrir a janela "Selecionar Arquivo"
-                fileInput.click();
-            };
-            cacheButtonsContainer.appendChild(btnImportarCache);
-
-
-            // --- Botão de LIMPAR Cache (Existente) ---
-            const btnLimparCache = document.createElement('button');
-            btnLimparCache.className = 'hud-footer-btn danger'; // Reutiliza estilo
-            btnLimparCache.textContent = 'Limpar Cache de Carregamento';
-            btnLimparCache.style.width = '100%';
-            //btnLimparCache.style.marginTop = '5px'; // (Removido, pois o 'gap' do container cuida disso)
-
-            btnLimparCache.onclick = async () => {
-                if (!cacheDB) {
-                    showHudToast("Erro: O banco de dados do cache não está acessível.");
-                    return;
-                }
-                if (confirm("Você tem certeza?\n\nIsso forçará um recarregamento lento (8 minutos) da próxima vez que você carregar as cidades.")) {
-                    try {
-                        btnLimparCache.textContent = 'Limpando...';
-
-                        // Limpa AMBOS os caches
-                        await cacheDB.apiResponses.clear();
-                        await cacheDB.geoItems.clear(); // <-- (NOVO) Limpa o cache inteligente
-
-                        btnLimparCache.textContent = 'Limpo com Sucesso!';
-                        btnLimparCache.style.backgroundColor = 'var(--hud-green)';
-                        btnLimparCache.style.borderColor = 'var(--hud-green)';
-                        btnLimparCache.style.color = 'white';
-
-                    } catch (e) {
-                        showHudToast("Erro ao limpar o cache: " + e.message);
-                    } finally {
-                         setTimeout(() => {
-                            btnLimparCache.textContent = 'Limpar Cache de Carregamento';
-                            btnLimparCache.style.backgroundColor = '';
-                            btnLimparCache.style.borderColor = 'var(--hud-red)';
-                            btnLimparCache.style.color = 'var(--hud-red)';
-                        }, 2500);
-                    }
-                }
-            };
-            cacheButtonsContainer.appendChild(btnLimparCache);
-
-            // Adiciona o container (com os 3 botões) ao painel de configurações
-            content.appendChild(cacheButtonsContainer);
-
-            // --- Cria o painel ---
-            createDraggablePanel('blocoPredefinicoesHUD', 'Predefinições', content, {
-                top: mainPanelRect.top,
-                left: mainPanelRect.left - 320,
-                width: 300,
-                height: 570 // (Altura AUMENTADA para caber os novos botões)
-            });
-        });
-
-        // (MODIFICADO) Botão Mapa (agora usa a função central)
-        btnMapa.addEventListener("click", () => {
-            // A variável 'localizacao' (com 'l' minúsculo) é preenchida pelo teu interceptador XHR
-            handleMapLink(localizacao[0], localizacao[1], btnMapa);
-        });
-
-        // (NOVO) Botão Captura
-        btnCaptura.addEventListener("click", toggleMapCaptureMode);
-
-        // (Existente) Botão Copiar
-        btnCopiar.addEventListener("click", () => {
-            const clientesParaCopiar = Object.values(infoClientes)
-                .filter(c => !state.somenteCancelados || c.data.registro.tipodesativacao === 1)
-                .map(c => {
-                    let textoCompleto = c.data.registro.nome || "Cliente Desconhecido";
-                    let partes = textoCompleto.split(" - ");
-                    let contrato = partes[1]?.trim() || "Cliente Desconhecido";
-
-                    let textoParaCopiar = contrato;
-
-                    if (state.exibirNomeCliente) {
-                        let nomeCliente = "";
-                        if (partes.length > 2) {
-                            let ultimasPartes = partes.slice(2).join(" - ");
-                            nomeCliente = ultimasPartes.replace(/\s*\((ATIVO|CANCELADO|SUSPENSO|NAO IDENTIFICADO)\)$/i, "").trim();
-                        }
-                        if (nomeCliente) {
-                            textoParaCopiar += ` - ${nomeCliente}`;
-                        }
-                    }
-
-                    if (state.copiarStatus && contrato !== "Cliente Desconhecido") {
-                        let statusCliente = textoCompleto.match(/\((ATIVO|CANCELADO|SUSPENSO|NAO IDENTIFICADO)\)/i);
-                        // Verifica se existe a nova propriedade 'statusConexao'
-                        const statusConexao = infoClientes[c.id]?.statusConexao;
-                        let statusFinal = statusCliente ? statusCliente[1] : "NAO IDENTIFICADO";
-
-                        // Adiciona o status Offline/Online se tiver sido verificado
-                        if (statusFinal === 'ATIVO' && statusConexao === 'Offline') {
-                           statusFinal = 'ATIVO-OFFLINE';
-                        } else if (statusFinal === 'ATIVO' && statusConexao === 'Online') {
-                           statusFinal = 'ATIVO-ONLINE';
-                        }
-
-                        textoParaCopiar += ` (${statusFinal.replace('-', ' ')})`;
-                    }
-
-                    if (state.copiarNomeRede) {
-                        let redeCliente = (c.data.rede?.rede || "").replace(/Card \d+ Porta \d+$/i, "").trim();
-                        if(redeCliente) textoParaCopiar += ` || ${redeCliente}`;
-                    }
-                    return textoParaCopiar;
-                });
-
-            if (clientesParaCopiar.length === 0) return;
-            copyToClipboard(clientesParaCopiar.join("\n"), btnCopiar);
-        });
-
-        // --- PREENCHIMENTO INICIAL ---
-        finalizarHud();
-    }
-
-
-    // --- 5. FUNÇÕES DO INTERCEPTADOR DE API ---
+                google.maps.Map.prototype = originalMap.prototype;
+            }
+        }, 100);
+    })();
+    `;
+    (document.head || document.body || document.documentElement).appendChild(mapScript);
 
     /**
-     * (MODIFICADO) Reseta o estado dos dados coletados,
-     * mas preserva os códigos de contexto (Pai e Poste) se existirem.
+     * =======================================================================================
+     * MODULE: LEGACY NETWORK INTERCEPTOR
+     * =======================================================================================
      */
-    function resetState() {
-        ultimaAPI = null;
+
+    function resetDataState() {
         equipamentosInfo = {};
         equipamentosOrdem = [];
         infoClientes = {};
-        isInitialLoadComplete = false;
-        state.searchQuery = ''; // Limpa a pesquisa
-        hudUserInteracted = false;
+        ultimaAPI = null;
+        console.log("[GeoGrid Tools] Data State Reset.");
 
-        if (sinalSearchController) {
-             sinalSearchController.abort();
-             sinalSearchController = null;
+        if (typeof UIManager !== 'undefined') {
+            // Reseta a trava de redimensionamento e o estado visual
+            UIManager.resetPanelState();
         }
     }
 
-/**
-     * Desenha os dados coletados dentro do painel do HUD.
-     * (VERSÃO CORRIGIDA v3.22 - Botão de Sinal na Rede + Lista de Clientes Restaurada)
-     */
-    function finalizarHud() {
-        // Encontra os elementos do HUD
-        const conteudoDiv = document.querySelector("#hudPainelTeste .hud-content");
-        const painel = document.querySelector("#hudPainelTeste");
-        const cabecalho = document.querySelector("#hudPainelTeste .hud-header");
+    const triggerRender = debounce(() => {
+        if (typeof UIManager !== 'undefined') UIManager.renderClientList();
+    }, 200);
 
-        // Se o HUD não estiver na tela (fechado), não faz nada.
-        if (!conteudoDiv || !painel || !cabecalho) {
-            return;
-        }
-
-        conteudoDiv.innerHTML = ""; // Limpa o conteúdo
-
-        // --- ADICIONAR BARRA DE PESQUISA ---
-        const searchBar = document.createElement('div');
-        searchBar.className = 'hud-search-bar';
-        searchBar.style.display = state.searchBarVisible ? 'block' : 'none';
-        const searchInput = document.createElement('input');
-        searchInput.type = 'text';
-        searchInput.id = 'hud-search-field';
-        searchInput.className = 'hud-search-input';
-        searchInput.placeholder = 'Pesquisar contrato (só números)...';
-        searchInput.value = state.searchQuery || '';
-        searchInput.oninput = (e) => {
-            e.target.value = e.target.value.replace(/\D/g, '');
-            debouncedSearch();
-        };
-        searchBar.appendChild(searchInput);
-        conteudoDiv.appendChild(searchBar);
-
-        // Normalização de nomes
-        const normalizarRede = nome => nome ? nome.replace(/^\d+\s*-\s*/, "").trim().toLowerCase() : "";
-        const capitalizarRede = nome => nome.replace(/\b\w/g, l => l.toUpperCase());
-        const todasRedesNorm = [...new Set(Object.values(equipamentosInfo).map(e => e.nomeRede))]
-            .map(normalizarRede)
-            .filter(Boolean);
-
-        const ordemFinal = [...equipamentosOrdem];
-        if (equipamentosInfo['__porDemanda__'] && !ordemFinal.includes('__porDemanda__')) {
-            ordemFinal.unshift('__porDemanda__');
-        }
-
-        // --- LOOP PRINCIPAL: Equipamentos/Redes ---
-        ordemFinal.forEach(equipId => {
-            const equipamento = equipamentosInfo[equipId];
-            if (!equipamento || equipamento.clientes.length === 0) return;
-
-            const isDemanda = equipId === '__porDemanda__';
-            const nomeRedeEquipamento = equipamento.nomeRede;
-            let redeFinal = isDemanda ? nomeRedeEquipamento : (capitalizarRede(normalizarRede(nomeRedeEquipamento)) || "Rede Desconhecida");
-
-            // --- CRIAÇÃO DO CABEÇALHO DA REDE (COM BOTÃO DE SINAL) ---
-            const redeDiv = document.createElement("div");
-            redeDiv.className = "hud-network-header";
-
-            const tituloRede = document.createElement("strong");
-            tituloRede.innerHTML = `📡 ${redeFinal}`;
-            redeDiv.appendChild(tituloRede);
-
-            // Calcula IDs ativos desta rede para o botão
-            const idsAtivosDestaRede = equipamento.clientes
-                .filter(c => {
-                    const dados = infoClientes[c.id];
-                    return dados && dados.data.registro?.nome.includes('ATIVO');
-                })
-                .map(c => c.id);
-
-            if (idsAtivosDestaRede.length > 0) {
-                const btnSinalRede = document.createElement("button");
-                btnSinalRede.className = "hud-btn-small";
-                btnSinalRede.innerHTML = `${ICONS.signal} Sinal`;
-                btnSinalRede.title = `Clique para verificar esta rede.\nSegure CTRL + Clique para verificar TODAS as redes da caixa.`; // (Opcional) Tooltip atualizado
-
-                btnSinalRede.onclick = (e) => {
-                    e.stopPropagation();
-
-                    // 1. Se o usuário segurar CTRL, coletamos TODOS os clientes ativos do painel
-                    if (e.ctrlKey) {
-                        const idsTotais = [];
-
-                        // 'ordemFinal' contém os IDs de todos os equipamentos listados no HUD
-                        ordemFinal.forEach(eqId => {
-                            const eq = equipamentosInfo[eqId];
-                            if (eq && eq.clientes) {
-                                // Filtra apenas os ativos de cada equipamento
-                                const ativosDoEquip = eq.clientes.filter(c => {
-                                    const dados = infoClientes[c.id];
-                                    // Verifica se existe dados e se o nome contém 'ATIVO'
-                                    return dados && dados.data.registro?.nome.includes('ATIVO');
-                                }).map(c => c.id);
-
-                                // Adiciona ao montante geral
-                                idsTotais.push(...ativosDoEquip);
-                            }
-                        });
-
-                        if (idsTotais.length > 0) {
-                            // Feedback visual rápido
-                            showHudToast(`Modo Turbo: Verificando sinal de ${idsTotais.length} clientes em todas as redes...`, 'success');
-                            // Chama a função principal passando a lista completa
-                            // Usamos 'btnSinalRede' como referência para o texto "Cancelar"
-                            verificarNivelDeSinal(idsTotais, btnSinalRede);
-                        } else {
-                            showHudToast('Nenhum cliente ativo encontrado no painel.', 'warning');
-                        }
-
-                    } else {
-                        // 2. Comportamento Padrão: Verifica apenas esta rede específica
-                        verificarNivelDeSinal(idsAtivosDestaRede, btnSinalRede);
-                    }
-                };
-                redeDiv.appendChild(btnSinalRede);
+    const handlers = {
+        "api.php": (data, url, bodyParams) => {
+            if (data && data.equipamentos) {
+                resetDataState();
             }
-            conteudoDiv.appendChild(redeDiv);
+            ultimaAPI = data;
+            if (bodyParams && bodyParams.get) {
+                const controlador = bodyParams.get("controlador");
+                const metodo = bodyParams.get("metodo");
+                const codigo = bodyParams.get("codigo");
 
-
-            // --- LOOP DE CLIENTES (RESTAURADO) ---
-            const clientesDoEquipamento = [...equipamento.clientes].sort((a, b) => {
-                const portaA = parseInt(a.porta) || Infinity;
-                const portaB = parseInt(b.porta) || Infinity;
-                return portaA - portaB;
-            });
-
-            clientesDoEquipamento.forEach(conexao => {
-                const clienteDetalhes = infoClientes[conexao.id];
-                if (!clienteDetalhes) return;
-
-                const li = document.createElement("div");
-                li.className = 'hud-client-row';
-                li.onclick = () => {
-                    li.classList.toggle('clicked');
-                    if (hudUserInteracted === false) hudUserInteracted = true;
-                };
-
-                let texto = clienteDetalhes.data.registro?.nome || "Cliente desconhecido";
-                let partes = texto.split(" - ");
-                let contrato = partes[1]?.trim() || "";
-                let matchStatus = texto.match(/\((ATIVO|CANCELADO|SUSPENSO|NAO IDENTIFICADO)\)/i);
-                let status = matchStatus ? matchStatus[1].toUpperCase().replace(' ', '-') : "NAO-IDENTIFICADO";
-
-                // Verificação de Status/Sinal
-                const statusConexao = clienteDetalhes.statusConexao;
-                if (status === 'ATIVO' && statusConexao === 'Offline') {
-                    status = 'ATIVO-OFFLINE';
+                // Captura ID do Pai (ex: Caixa ou Armário onde estamos clicando)
+                if (controlador === 'diagrama' && metodo === 'carregarCabosEquipamentos' && codigo) {
+                    ultimoCodigoEquipamentoPai = codigo;
                 }
-
-                let nomeCliente = "";
-                if (partes.length > 2) {
-                    let ultimasPartes = partes.slice(2).join(" - ");
-                    nomeCliente = ultimasPartes.replace(/\s*\((ATIVO|CANCELADO|SUSPENSO|NAO IDENTIFICADO)\)$/i, "").trim();
+            }
+        },
+        "carregaViabilidadeMarcadorJava.php": (data, url, bodyParams) => {
+            const loc = data?.dados?.[0];
+            if (loc && loc.lat && loc.lng) {
+                localizacao = [loc.lat, loc.lng];
+            }
+            if (bodyParams && bodyParams.get) {
+                const posteRaw = bodyParams.get("poste");
+                if (posteRaw) {
+                    // Remove o 'PT' se existir, queremos apenas o número para o nome padrão
+                    window.ultimoCodigoPoste = posteRaw.replace(/^PT/i, '');
+                    console.log("[GeoGrid Tools] Poste capturado:", window.ultimoCodigoPoste);
                 }
-                const nomeDisplay = (state.exibirNomeCliente && nomeCliente)
-                                    ? `<span class="hud-client-name"> - ${nomeCliente}</span>`
-                                    : '';
+            }
+        },
+        "carregarPortas.php": (data, url, bodyParams) => {
+            const equipId = bodyParams?.get("codigo");
+            if (!equipId) return;
 
-                let redeCliente = (clienteDetalhes.data.rede?.rede || "").replace(/Card \d+ Porta \d+$/i, "").trim();
-                const redeClienteNorm = redeCliente.toLowerCase();
-                let mesmaRede = isDemanda ? true : todasRedesNorm.some(r => redeClienteNorm.includes(r));
+            const nomeRede = ultimaAPI?.dados?.nome_rede || "Rede Desconhecida";
 
-                const portaDisplay = conexao.obs
-                    ? `<img src="https://img.icons8.com/fluency/48/error--v1.png" style="width:14px;height:14px;vertical-align:middle;" title="${conexao.obs}">`
-                    : (conexao.porta || '?');
+            if (!equipamentosInfo[equipId]) {
+                equipamentosInfo[equipId] = { nomeRede: nomeRede, clientes: [] };
+                if (!equipamentosOrdem.includes(equipId)) equipamentosOrdem.push(equipId);
+            }
 
-                // Exibição do Nível de Sinal
-                const nivelSinal = clienteDetalhes.nivelSinal;
-                let sinalDisplay = '';
-                if (nivelSinal) {
-                    let corSinal = 'var(--hud-text)';
-                    // Lista de mensagens de erro/aviso para pintar de vermelho
-                    if (['Sem Sinal', 'Erro API', 'Cancelado', 'Sem Dados ONU', 'Selecione o sistema correto no Viaradio', 'Não Encontrado', 'S/ Contrato', 'Erro JSON', 'Fazer Login', 'Sem Leitura', 'Erro Login', 'Sem Dados ONUs'].includes(nivelSinal)) {
-                        corSinal = 'var(--hud-red)';
-                    } else {
-                        // Se for número, avalia
-                        const val = parseFloat(nivelSinal);
-                        if (!isNaN(val)) {
-                             if (val < -24.30) corSinal = 'var(--hud-orange)';
-                             else corSinal = 'var(--hud-green)';
-                        }
-                    }
-                    sinalDisplay = `<div style="font-size: 0.85em; color: ${corSinal}; margin-top: -2px; padding-left: 20px;">Sinal: ${nivelSinal}</div>`;
-                }
-
-                if (contrato) {
-                    li.innerHTML = `
-                        <span class="port">${portaDisplay}:</span>
-                        <span class="contract">${contrato}</span>${nomeDisplay}
-                        <span class="status-${status}">(${status.charAt(0) + status.slice(1).toLowerCase().replace('-', ' ')})</span>
-                        ${redeCliente ? `|| <span class="network">${redeCliente}</span>` : ""}
-                    `;
-                    conteudoDiv.appendChild(li);
-
-                    // Adiciona a linha de sinal abaixo
-                    if (sinalDisplay) {
-                        const sinalDiv = document.createElement("div");
-                        sinalDiv.innerHTML = sinalDisplay;
-                        conteudoDiv.appendChild(sinalDiv);
-                    }
-
-                    if (!mesmaRede && state.destacarRedesDivergentes) {
-                        li.classList.add('network-divergent');
-                    }
-                } else {
-                    li.innerHTML = `<span class="port">${portaDisplay}:</span> <span class="contract">Cliente Desconhecido</span>`;
-                    conteudoDiv.appendChild(li);
-                }
-            }); // Fim do loop de clientes
-        }); // Fim do loop de redes
-
-        // --- Redimensionamento Inicial ---
-        if (!isInitialLoadComplete) {
-            const headerHeight = cabecalho.offsetHeight;
-            const contentHeight = conteudoDiv.scrollHeight;
-            const totalHeight = headerHeight + contentHeight + 15;
-            const maxHeight = parseInt(getComputedStyle(painel).maxHeight) || 550;
-            painel.style.height = `${Math.min(totalHeight, maxHeight)}px`;
-
-            let optimalWidth = conteudoDiv.scrollWidth;
-            const isScrollbarVisible = conteudoDiv.scrollHeight > conteudoDiv.clientHeight;
-            if (isScrollbarVisible) optimalWidth += 8;
-            const minWidth = 409;
-            const maxWidth = window.innerWidth * 0.8;
-            painel.style.width = `${Math.min(Math.max(optimalWidth, minWidth), maxWidth)}px`;
-
-            isInitialLoadComplete = true;
-        }
-
-        // Re-aplica o filtro de pesquisa
-        performSearch();
-    }
-
-    // Criar uma versão "debounced" da função de finalização
-    const debouncedFinalizar = debounce(finalizarHud, 400);
-
-
-    /**
-     * (MODIFICADO) Inicia o interceptador de XHR (API).
-     * (NOVO) 'carregaCompletar.php' agora escreve no cache 'geoItems'.
-     * (NOVO) 'carregaItensCidades.php' é o GATILHO para a carga rápida.
-     */
-    function iniciarInterceptadorXHR() {
-
-        // --- Handlers (Funções que gravam no cache e fazem outras lógicas) ---
-        const handlers = {
-            "api.php": (data, url, bodyParams) => {
-                // ... (toda a sua lógica original de 'api.php' permanece igual) ...
-                if (bodyParams && bodyParams.get) {
-                    const controlador = bodyParams.get("controlador");
-                    const metodo = bodyParams.get("metodo");
-                    const codigo = bodyParams.get("codigo");
-
-                    if (controlador === 'diagrama' && metodo === 'carregarCabosEquipamentos' && codigo) {
-                        ultimoCodigoEquipamentoPai = codigo;
-                        console.log('[HUD Script] Código do equipamento PAI capturado:', ultimoCodigoEquipamentoPai);
-                    }
-                }
-
-                if (data?.equipamentos) {
-                    const codigoPaiPreservado = ultimoCodigoEquipamentoPai;
-                    const codigoPostePreservado = ultimoCodigoPoste;
-                    resetState();
-                    ultimoCodigoEquipamentoPai = codigoPaiPreservado;
-                    ultimoCodigoPoste = codigoPostePreservado;
-                    const conteudoDiv = document.querySelector("#hudPainelTeste .hud-content");
-                    if(conteudoDiv) {
-                        conteudoDiv.innerHTML = '';
-                        const searchBar = document.createElement('div');
-                        searchBar.className = 'hud-search-bar';
-                        searchBar.style.display = state.searchBarVisible ? 'block' : 'none';
-                        searchBar.innerHTML = `<input type="text" id="hud-search-field" class="hud-search-input" placeholder="Pesquisar contrato (só números)...">`;
-                        conteudoDiv.appendChild(searchBar);
-                        const searchInput = document.getElementById('hud-search-field');
-                        searchInput.oninput = (e) => {
-                            e.target.value = e.target.value.replace(/\D/g, '');
-                            debouncedSearch();
-                        };
-                        const textNode = document.createElement('div');
-                        textNode.textContent = "Aguardando abertura de equipamento...";
-                        textNode.style.padding = "8px 0";
-                        conteudoDiv.appendChild(textNode);
-                    }
-                }
-                ultimaAPI = data;
-            },
-            "desvincularCliente.php": (data, url, bodyParams) => {
-                // Pega o código do splitter (ex: JPT_DIV76173) e a porta (ex: 4)
-                const codigoEquipamento = bodyParams?.get("codigo");
-                const portaCliente = bodyParams?.get("id"); // Este é o número da porta
-
-                if (!codigoEquipamento || !portaCliente) {
-                    console.warn("[HUD Script] 'desvincularCliente.php' intercetado sem código ou porta.");
-                    return;
-                }
-
-                console.log(`[HUD Script] Atualizando cliente para 'Removido': Equipamento ${codigoEquipamento}, Porta ${portaCliente}`);
-
-                try {
-                    // --- Etapa 1: Remover o cliente do nosso objeto de DADOS ---
-                    if (equipamentosInfo[codigoEquipamento] && equipamentosInfo[codigoEquipamento].clientes) {
-
-                        const indexParaRemover = equipamentosInfo[codigoEquipamento].clientes.findIndex(
-                            cliente => cliente.porta == portaCliente
-                        );
-
-                        if (indexParaRemover > -1) {
-                            // Remove o cliente do array de dados
-                            equipamentosInfo[codigoEquipamento].clientes.splice(indexParaRemover, 1);
-                            console.log("[HUD Script] Cliente removido dos DADOS.");
-                        } else {
-                             console.warn("[HUD Script] Porta não encontrada nos dados do equipamento.");
-                        }
-                    } else {
-                         console.warn("[HUD Script] Equipamento não encontrado em 'equipamentosInfo'.");
-                    }
-
-                    // --- Etapa 2: Atualizar a VISUALIZAÇÃO (do HTML) para "Removido" ---
-                    const conteudoDiv = document.querySelector("#hudPainelTeste .hud-content");
-                    if (!conteudoDiv) return;
-
-                    const todasAsLinhas = conteudoDiv.querySelectorAll('.hud-client-row');
-                    let linhaModificada = false;
-
-                    for (const linha of todasAsLinhas) {
-                        const portSpan = linha.querySelector('.port');
-
-                        // 1. Encontra a linha correta pela porta
-                        if (portSpan && portSpan.textContent.replace(':', '').trim() == portaCliente) {
-
-                            // 2. Pega o número do contrato ANTES de apagar
-                            let contratoNum = "0000"; // Default
-                            const contractSpan = linha.querySelector('.contract');
-                            if (contractSpan) {
-                                contratoNum = contractSpan.textContent.trim();
-                            }
-
-                            // 3. Define o novo texto (limpando o conteúdo antigo)
-                            //    (Mantemos o span da porta, pois é um bom identificador)
-                            linha.innerHTML = `
-                                <span class="port">${portSpan.innerHTML}</span>
-                                <span class="contract" style="color: var(--hud-red);">Removido (${contratoNum})</span>
-                            `;
-
-                            // 4. Adiciona a classe "tachado"
-                            linha.classList.add('clicked');
-
-                            // 5. (Opcional) Remove a cor de "rede divergente", se tiver
-                            linha.classList.remove('network-divergent');
-
-                            // 6. Torna o clique "permanente" (desativa o toggle)
-                            linha.onclick = null;
-
-                            linhaModificada = true;
-                            console.log("[HUD Script] Linha do cliente atualizada para 'Removido'.");
-                            break; // Para o loop
-                        }
-                    }
-                    if (!linhaModificada) {
-                        console.warn("[HUD Script] Não foi encontrada nenhuma linha no HTML com a porta " + portaCliente);
-                    }
-
-                } catch (e) {
-                    console.error("[HUD Script] Erro ao tentar atualizar cliente da HUD para 'Removido':", e);
-                }
-            },
-            "carregarPortas.php": (data, url, bodyParams) => {
-                // ... (toda a sua lógica original de 'carregarPortas.php' permanece igual) ...
-                const equipId = bodyParams?.get("codigo");
-                if (!equipId || !ultimaAPI?.dados) return;
-                const nomeRede = ultimaAPI.dados.nome_rede;
-                if (!equipamentosInfo[equipId]) {
-                    equipamentosInfo[equipId] = { nomeRede, clientes: [] };
-                    if (!equipamentosOrdem.includes(equipId)) {
-                        equipamentosOrdem.push(equipId);
-                    }
-                }
+            if (data.registros && data.registros.saidas) {
                 data.registros.saidas.forEach(p => {
-                    if (p.cliente.possuiCliente) {
-                        equipamentosInfo[equipId].clientes.push({
-                            id: p.cliente.id, porta: p.fibra, obs: p.comentario?.texto ?? ""
+                    equipamentosInfo[equipId].clientes.push({
+                        id: p.cliente.possuiCliente ? p.cliente.id : null,
+                        porta: p.fibra,
+                        obs: p.comentario?.texto ?? "",
+                        status: p.cliente.possuiCliente ? 'Conectado' : 'Livre'
+                    });
+                });
+            }
+            triggerRender();
+        },
+        // --- NOVO: Captura Clientes por Demanda ---
+        "carregarFibras.php": (data, url, bodyParams) => {
+            if (data && data.registros) {
+                // Garante que o grupo especial existe
+                if (!equipamentosInfo['__porDemanda__']) {
+                    equipamentosInfo['__porDemanda__'] = {
+                        nomeRede: 'Clientes por Demanda',
+                        clientes: []
+                    };
+                }
+
+                data.registros.forEach(p => {
+                    if (p.cliente && p.cliente.possuiCliente) {
+                        equipamentosInfo['__porDemanda__'].clientes.push({
+                            id: p.cliente.id,
+                            porta: 'D', // D de Demanda
+                            obs: p.comentario?.texto ?? "",
+                            status: 'Conectado'
                         });
                     }
                 });
-            },
-            "carregarFibras.php": (data) => {
-                // ... (toda a sua lógica original de 'carregarFibras.php' permanece igual) ...
-                if (data?.registros) {
-                    if (!equipamentosInfo['__porDemanda__']) {
-                        equipamentosInfo['__porDemanda__'] = { nomeRede: 'Clientes por Demanda', clientes: [] };
-                    }
-                    data.registros.forEach(p => {
-                        if (p.cliente.possuiCliente) {
-                            equipamentosInfo['__porDemanda__'].clientes.push({
-                                id: p.cliente.id, porta: '?', obs: p.comentario?.texto ?? ""
-                            });
-                        }
-                    });
-                }
-            },
-            // RETORNA AO ESTADO DA V3.13 (apenas salva os dados)
-            "consultarCliente.php": (data, url, bodyParams) => {
-                const idCliente = bodyParams?.get("idCliente");
-                if (!idCliente) return;
 
-                // --- INÍCIO DA CORREÇÃO (Estratégia do "Tachado") ---
-
-                // 1. Se o usuário JÁ INTERAGIU (tachou um cliente),
-                // apenas atualiza os dados em segundo plano e NÃO redesenha.
-                if (hudUserInteracted === true) {
-                    // Mantém a estrutura de dados (data + novo campo de status)
-                    infoClientes[idCliente] = { id: idCliente, data, statusConexao: null };
-                    return; // Sai da função e ignora o finalizarHud()
+                // Adiciona ao topo da lista se ainda não estiver lá
+                if (!equipamentosOrdem.includes('__porDemanda__')) {
+                    equipamentosOrdem.unshift('__porDemanda__');
                 }
 
-                // 2. Se o usuário AINDA NÃO INTERAGIU, processa normalmente.
-                // (Isso permite que o HUD carregue os clientes iniciais)
-                infoClientes[idCliente] = { id: idCliente, data, statusConexao: null };
-                debouncedFinalizar();
-                // --- FIM DA CORREÇÃO ---
-            },
-            "carregaViabilidadeMarcadorJava.php": (data, url, bodyParams) => {
-                // ... (toda a sua lógica original de 'carregaViabilidadeMarcadorJava.php' permanece igual) ...
-                const loc = data?.dados?.[0];
-                if (loc) localizacao = [loc.lat, loc.lng];
-                if (bodyParams && bodyParams.get) {
-                    const posteRaw = bodyParams.get("poste");
-                    if (posteRaw) { ultimoCodigoPoste = posteRaw.replace(/^PT/i, ''); }
-                }
-            },
-            "carregaTipoPadrao": (data) => {
-                const fabricante = data?.fabricante;
-                const tipo = data?.tipo;
-                let codigoParaInserir = null;
-                let seletorDoInput = null;
-
-                const codigoPoste = ultimoCodigoPoste || "00000";
-
-                // 1. Define o código E o seletor correto
-                if (fabricante === "Overtek" && tipo === "Caixa de Atendimento (Splitter)") {
-                    codigoParaInserir = `cx em. ${codigoPoste}`;
-                    seletorDoInput = '.template-caixa input[name="codigo"]';
-                } else if (fabricante === "Furukawa" && tipo === "terminal de teste") {
-                    codigoParaInserir = `cx at. ${codigoPoste}`;
-                    seletorDoInput = '.template-terminal input[name="codigo"]';
-                }
-
-                if (!codigoParaInserir || !seletorDoInput) {
-                    return;
-                }
-
-                // 3. (REVERTIDO) Usa o "Vigia" simples com timeout de 3s
-                const observer = new MutationObserver((mutationsList, obs) => {
-                    for (const mutation of mutationsList) {
-                        if (mutation.type === 'childList') {
-                            for (const node of mutation.addedNodes) {
-                                // 4. Verifica se o nó adicionado é o painel de cadastro
-                                if (node.nodeType === 1 && node.matches('.padrao-painel-flutuante.painel-acessorio-cadastro')) {
-
-                                    // 5. Painel encontrado! Usamos o seletor dinâmico
-                                    const inputCodigo = node.querySelector(seletorDoInput);
-
-                                    if (inputCodigo) {
-                                        // 6. Preenche o valor e foca no campo
-                                        inputCodigo.value = codigoParaInserir;
-                                        inputCodigo.focus();
-
-                                        // 7. Para de observar (trabalho concluído)
-                                        obs.disconnect();
-                                        return;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                });
-                observer.observe(document.body, { childList: true, subtree: true });
-                // 9. (MODIFICADO) Medida de segurança: 3 segundos
-                setTimeout(() => {
-                    observer.disconnect();
-                }, 3000); // 3 segundos
-            },
-            "funcoesRoteamentoMapa.php": (data) => {
-                setTimeout(() => {
-                    document.querySelectorAll(".menu-lateral-container, .menu-lateral-direito.menu-lateral-rota.absolute").forEach(el => { el.style.overflow = "auto"; });
-                }, 100); // 100ms de espera
-            },
-            "carrega_tiposDeEquipamentos.php": (data) => {
-                const codigoPoste = ultimoCodigoPoste || "00000";
-                const codigoParaInserir = `spl. TIPO ${codigoPoste}`;
-                setTimeout(() => {
-                    document.activeElement.value=codigoParaInserir
-                }, 100); // 100ms de espera
-            },
-
-            // --- Handlers de Cache (Lógica de gravação ATUALIZADA) ---
-
-            "carregaItensCidades.php": (data, url, bodyParams) => {
-                // Esta chamada apenas GRAVA no cache "burro"
-                gravarNoCache(url, bodyParams.toString(), data);
-            },
-            "carregaAcessoriosPoste.php": (data, url, bodyParams) => {
-                // --- Lógica da v3.3 (CACHE) ---
-                if (bodyParams && bodyParams.get('poste')) {
-                    gravarNoCache(url, bodyParams.toString(), data);
-                }
-
-                // --- Lógica da v2.7 (PREENCHIMENTO) ---
-                // 1. Pega o código do poste
-                const codigoPoste = ultimoCodigoPoste || "00000";
-                const codigoParaInserir = `ponte ${codigoPoste}`;
-
-                // 3. Usa o "Vigia" simples com timeout de 3s
-                const observer = new MutationObserver((mutationsList, obs) => {
-                    for (const mutation of mutationsList) {
-                        if (mutation.type === 'childList') {
-                            for (const node of mutation.addedNodes) {
-                                // 4. Verifica se é o painel correto
-                                if (node.nodeType === 1 && node.matches('.padrao-painel-flutuante.painel-cadastro-cabo-ligacao')) {
-
-                                    // 5. Encontra o input de código DENTRO dele
-                                    const inputCodigo = node.querySelector('input[name="codigo"]');
-
-                                    if (inputCodigo) {
-                                        // 6. Preenche e foca
-                                        inputCodigo.value = codigoParaInserir;
-                                        inputCodigo.focus();
-
-                                        // 7. Limpa
-                                        obs.disconnect();
-                                        return;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                });
-                observer.observe(document.body, { childList: true, subtree: true });
-                setTimeout(() => {
-                    observer.disconnect();
-                }, 3000); // 3 segundos
-            },
-
-            // (NOVO) 'carregaCompletar' agora é um "escritor inteligente"
-            "carregaCompletar.php": async (data, url, bodyParams) => {
-                // 1. Mantém o cache "burro" (é bom como fallback)
-                gravarNoCache(url, bodyParams.toString(), data);
-
-                // 2. Inicia a lógica do cache "inteligente"
-                if (!cacheDB) return;
-
-                try {
-                    let itemsToSave = [];
-
-                    // O 'data' pode ser um array (ex: cabos) ou um objeto (ex: postes)
-                    if (Array.isArray(data)) {
-                        itemsToSave = data;
-                    } else if (data && data.cd) { // Resposta de item único
-                        itemsToSave = [data];
-                    }
-
-                    // --- INÍCIO DA NOVA LÓGICA DE DEPENDÊNCIA (Manteve-se o que você validou) ---
-                    const itemsComDependencia = itemsToSave.map(item => {
-                        const dependencies = new Set();
-
-                        // Verifica se é um Cabo (possui array 'points')
-                        if (item.points && Array.isArray(item.points)) {
-
-                            // Percorre todos os pontos do cabo
-                            item.points.forEach(point => {
-                                // O campo 'cd' nos pontos é o código do poste/equipamento
-
-                                // O SEU PROBLEMA: O PT10752 (poste) não é da cdCity 1204 e está aqui
-                                if (point.cd && point.cd.startsWith('PT')) { // Filtra apenas por PT (poste)
-                                    dependencies.add(point.cd);
-                                }
-
-                                // Exemplo de estrutura aninhada: bType 2 (Poste)
-                                if (point.bType === 2 && point.cd) {
-                                    dependencies.add(point.cd);
-                                }
-                            });
-                        }
-
-                        // Retorna o item enriquecido com a lista de dependências
-                        return {
-                            ...item,
-                            dependencies: Array.from(dependencies) // Converte o Set para Array
-                        };
-                    });
-                    // --- FIM DA NOVA LÓGICA DE DEPENDÊNCIA ---
-
-                    // Filtra por itens válidos (só salva se tiver os dados mínimos)
-                    const validItems = itemsComDependencia.filter(item => item.cd && item.cdCity);
-
-                    if (validItems.length > 0) {
-                        // A SINTAXE CORRETA DO 'db.js':
-                        await cacheDB.geoItems.put(validItems);
-                        console.log(`[HUD Script - Cache] Salvo ${validItems.length} itens (com dependências) no 'geoItems'.`);
-                    }
-                } catch (e) {
-                    console.error(`[HUD Script - Cache] Erro ao salvar no 'geoItems':`, e);
-                }
+                triggerRender();
             }
-        };
-
-        // --- Função de Gravação (Helper interno - "Cache Burro") ---
-        async function gravarNoCache(url, payloadString, responseData) {
-            if (!cacheDB) { return; }
-            const cacheId = `${url}?${payloadString}`;
-            try {
-                await cacheDB.apiResponses.put({ // Salva no cache 'apiResponses'
-                    id: cacheId,
-                    url: url,
-                    data: responseData,
-                    timestamp: new Date().getTime()
-                });
-                // console.log(`[HUD Script - Cache] Salvo: ${cacheId.substring(0, 150)}...`);
-            } catch (e) {
-                console.error(`[HUD Script - Cache] Erro ao salvar ${cacheId}:`, e);
+        },
+        "consultarCliente.php": (data, url, bodyParams) => {
+            const idCliente = bodyParams?.get("idCliente");
+            if (idCliente && data.status) {
+                infoClientes[idCliente] = { id: idCliente, data: data };
+                triggerRender();
             }
         }
+    };
 
-        // --- Função Dispatcher (Helper interno) ---
-        // (Chama os handlers acima)
-        function dispatchHandler(url, resp, bodyParams) {
-            const key = Object.keys(handlers).find(k => url.includes(k));
-            if (!key) return;
-            try {
-                const data = JSON.parse(resp);
-                handlers[key](data, url, bodyParams); // Chama o handler correspondente
-            } catch (err) {}
-        }
-
-        // --- Monkey-patching XMLHttpRequest ---
-        const origOpen = XMLHttpRequest.prototype.open;
-        const origSend = XMLHttpRequest.prototype.send;
-
+    (function(open, send) {
         XMLHttpRequest.prototype.open = function(method, url) {
             this._url = url;
-            this._method = method;
-
-            // (GRAVADOR) Anexa o 'load' listener para salvar no cache QUANDO a rede responder
-            this.addEventListener("load", () => {
-                if (this.status !== 200) return;
-                let bodyParams = (this._body instanceof FormData) ? this._body : new URLSearchParams(this._body || "");
-                // Chama o dispatcher, que vai salvar nos caches (burro e/ou inteligente)
-                dispatchHandler(this._url, this.responseText, bodyParams);
-            });
-
-            return origOpen.apply(this, arguments);
+            return open.apply(this, arguments);
         };
-
-        // (LÓGICA DO 'SEND' REFEITA - COM .abort())
         XMLHttpRequest.prototype.send = function(body) {
             this._body = body;
-            const xhr = this;
-
-            // --- (INÍCIO DA MODIFICAÇÃO: LÓGICA DE BYPASS) ---
-            // Verifica se a flag de bypass (definida pelo script injetado) está ativa
-            try {
-                const gw = (typeof unsafeWindow !== 'undefined' ? unsafeWindow : window);
-                if (gw.__hudBypassProximaCarga__ === true) {
-                    console.log('[HUD Script - Interceptor] Flag de bypass detectada. Permitindo carregamento lento.');
-                    gw.__hudBypassProximaCarga__ = false; // Reseta a flag para a próxima vez
-                    origSend.call(xhr, body); // Chama o 'send' original
-                    return; // Pula toda a lógica de cache
-                }
-            } catch (err) {
-                // Mesmo se der erro ao ler a flag, continua o fluxo normal
-                console.warn("[HUD Script - Interceptor] Erro ao verificar flag de bypass.", err);
-            }
-            // --- (FIM DA MODIFICAÇÃO) ---
-
-            // --- (INÍCIO DA LÓGICA DO "LEITOR RÁPIDO" - COM DEPENDÊNCIAS) ---
-            const isFastLoadTrigger = xhr._url && xhr._url.includes("carregaItensCidades.php");
-
-            if (xhr._method === 'POST' && isFastLoadTrigger && cacheDB) {
-                console.log('[HUD Script] Gatilho de Carga Rápida detectado!');
-
-                (async () => {
+            this.addEventListener('load', function() {
+                if (this.status === 200) {
                     try {
-                        const bodyParams = new URLSearchParams(body);
-                        const cityCodes = bodyParams.getAll('json[]');
-                        const cityIDs = cityCodes.map(c => c.replace('CD', '')); // IDs numéricos
-                        const cityIdSet = new Set(cityIDs);
-
-                        const gw = (typeof unsafeWindow !== 'undefined' ? unsafeWindow : window);
-
-                        console.log(`[HUD Script] Consultando cache para cidades: ${cityIDs.join(', ')}`);
-
-                        // 1. Pede TODOS os itens do cache
-                        const allItems = await cacheDB.geoItems.query().all().execute();
-
-                        console.log(`[HUD Script] ${allItems.length} itens lidos. Filtrando...`);
-
-                        // --- ETAPA A: CARREGA ITENS PRINCIPAIS (da cidade selecionada) ---
-                        const primaryItems = allItems.filter(item => {
-                            return cityIdSet.has(item.cdCity);
-                        });
-
-                        // --- ETAPA B: BUSCA POR DEPENDÊNCIAS INTERCIDADE ---
-
-                        const dependencyCodes = new Set();
-                        // 1. Coleta TODOS os códigos de dependência dos itens primários
-                        primaryItems.forEach(item => {
-                            (item.dependencies || []).forEach(depCode => {
-                                // Adiciona se o código de dependência NÃO for da cidade que já está sendo carregada (evita duplicação)
-                                const depCityMatch = depCode.match(/CD(\d+)/)?.[1] || '';
-                                if (!cityIdSet.has(depCityMatch)) {
-                                     dependencyCodes.add(depCode);
+                        const url = this._url;
+                        for (const key in handlers) {
+                            if (url.indexOf(key) !== -1) {
+                                let bodyParams = null;
+                                if (this._body) {
+                                    bodyParams = (typeof this._body === 'string') ? new URLSearchParams(this._body) : this._body;
                                 }
-                            });
-                        });
-
-                        console.log(`[HUD Script] Encontradas ${dependencyCodes.size} dependências intercidade.`);
-
-                        // 2. Busca os itens de dependência no cache (ex: PT001_CD200)
-                        const dependentItems = allItems.filter(item => {
-                            // Verifica se o 'cd' do item (ex: PT001_CD200) está na nossa lista de dependências
-                            return dependencyCodes.has(item.cd);
-                        });
-
-                        // 3. Combina as listas e remove duplicatas
-                        const finalItemsMap = new Map();
-
-                        [...primaryItems, ...dependentItems].forEach(item => {
-                             finalItemsMap.set(item.cd, item);
-                        });
-
-                        const finalItems = Array.from(finalItemsMap.values());
-
-                        console.log(`[HUD Script] Total de ${finalItems.length} itens (cidade + dependências) encontrados.`);
-
-
-                        if (!finalItems || finalItems.length === 0) {
-                            console.warn("[HUD Script] Cache 'geoItems' vazio. Deixando a carga normal do site prosseguir.");
-                            origSend.call(xhr, body);
-                            return;
+                                const responseData = JSON.parse(this.responseText);
+                                handlers[key](responseData, url, bodyParams);
+                                break;
+                            }
                         }
-
-                        // 4. A "PONTE": Envia os dados para o script injetado
-                        console.log(`[HUD Script] Cache 'geoItems' carregado. Enviando ${finalItems.length} itens para a página...`);
-                        document.dispatchEvent(new CustomEvent('hud:plotFast', {
-                            detail: { items: finalItems }
-                        }));
-
-                        // 5. ABORTA a requisição original
-                        console.log("[HUD Script] Abortando requisição XHR original.");
-                        xhr.abort();
-                        // --- (FIM DA CORREÇÃO) ---
-
-                    } catch (e) {
-                        console.error("[HUD Script] Erro ao carregar do 'geoItems':", e);
-                        origSend.call(xhr, body); // Fallback para o carregamento lento
-                    }
-                })();
-
-                return;
-            }
-            // --- (FIM DA LÓGICA DO "LEITOR RÁPIDO") ---
-
-            // --- Lógica de cache antiga (para 'carregaCompletar' etc.) ---
-            const isOldCacheable = xhr._url && (
-                xhr._url.includes("carregaCompletar.php") ||
-                (xhr._url.includes("carregaAcessoriosPoste.php") && body && body.includes("poste="))
-            );
-
-            if (xhr._method === 'POST' && isOldCacheable && cacheDB) {
-                (async () => {
-                    let bodyParams = new URLSearchParams(body);
-                    const cacheId = `${xhr._url}?${bodyParams.toString()}`;
-                    const cachedData = await lerDoCache(cacheId);
-
-                    if (cachedData) {
-                        Object.defineProperty(xhr, 'responseText', { value: JSON.stringify(cachedData) });
-                        Object.defineProperty(xhr, 'status', { value: 200 });
-                        Object.defineProperty(xhr, 'readyState', { value: 4 });
-                        xhr.dispatchEvent(new Event('load'));
-                    } else {
-                        origSend.call(xhr, body);
-                    }
-                })();
-            } else {
-                origSend.call(xhr, body);
-            }
+                    } catch (e) {}
+                }
+            });
+            return send.apply(this, arguments);
         };
-    }
+    })(XMLHttpRequest.prototype.open, XMLHttpRequest.prototype.send);
+
 
     /**
-     * (NOVO) Inicia um listener para forçar o carregamento lento (bypass do cache).
-     * Se o usuário segurar CTRL ao clicar em "Mostrar Item", o cache rápido é ignorado.
+     * =======================================================================================
+     * MODULE: TURBO ENGINE (Fast Map Loading - Corrected)
+     * Description: Parallel fetching, O(1) plotting, Custom Status HUD (No native alerts).
+     * =======================================================================================
      */
-    function iniciarListenerDeBypassDeCarga() {
-        // Usamos 'mousedown' na fase de 'capture' (true) para garantir que
-        // definimos a flag ANTES do 'click' ser processado pela página.
-        document.body.addEventListener('mousedown', function(e) {
+    const turboScript = document.createElement('script');
+    turboScript.textContent = `
+    (function() {
+        console.log("[GeoGrid Turbo] Performance Module Loaded.");
 
-            // 1. Verifica se o alvo é o botão de carregar
-            const target = e.target;
-            if (target && target.matches('img[name="mostrar_item"]')) {
+        const CONFIG = {
+            CONCURRENCY: 6,
+            BATCH_SIZE: 2000,
+        };
 
-                // 2. Verifica se a tecla CTRL está pressionada
-                if (e.ctrlKey) {
-                    console.log('%c[HUD Script] CTRL+Click detectado no botão "Mostrar Item".', 'color: #f66a0a; font-weight: bold;');
-                    console.log('%c[HUD Script] Forçando carregamento lento (bypass do cache)...', 'color: #f66a0a; font-weight: bold;');
+        let isTurboRunning = false;
+        let originalRetornaIndice = null;
 
-                    // 3. Define a flag de bypass no contexto da PÁGINA (unsafeWindow)
+        // --- INTERNAL STATUS HUD (Substitui o criaAlerta) ---
+        // Cria um elemento visual próprio para não depender do site
+        const statusHud = document.createElement('div');
+        statusHud.style.cssText = "position:fixed; bottom:10px; right:10px; padding: 8px 12px; background: rgba(0,0,0,0.85); color: #e0e0e0; border-radius: 4px; z-index:2147483647; font-family: sans-serif; font-size: 11px; display: none; border-left: 4px solid #ff9800; box-shadow: 0 2px 10px rgba(0,0,0,0.3); pointer-events: none;";
+        (document.body || document.documentElement).appendChild(statusHud);
+
+        function updateStatusHUD(status, msg) {
+            statusHud.style.display = 'block';
+            statusHud.innerHTML = '<strong>TURBO ENGINE</strong><br>' + msg;
+
+            if(status === "working") statusHud.style.borderLeftColor = "#4caf50"; // Verde
+            else if(status === "finish") {
+                statusHud.style.borderLeftColor = "#00bcd4"; // Ciano
+                setTimeout(function() { statusHud.style.display = 'none'; }, 3000);
+            } else {
+                statusHud.style.borderLeftColor = "#ff9800"; // Laranja (Padrão)
+            }
+        }
+
+        // Índice Global de Acesso Rápido
+        window.__TURBO_INDEX__ = {};
+
+        // --- TURBO LOADER FUNCTION ---
+        const turboCompletaJson = async function(jsonJava, cdAbrir = "", deveCentralizar = true, carregamentos = true) {
+            if (isTurboRunning) return;
+
+            // Credenciais Fixas
+            const idRazao = 46;
+            let viabilidade = "";
+            try {
+                if(window.jsonPrincipalUsuario?.dados?.viabilidade) {
+                    viabilidade = window.jsonPrincipalUsuario.dados.viabilidade;
+                }
+            } catch(e) {}
+
+            isTurboRunning = true;
+
+            // Feedback Visual Próprio (Sem criaAlerta)
+            if(carregamentos) updateStatusHUD("working", "Iniciando aceleração...");
+
+            window.__TURBO_INDEX__ = {};
+
+            let itemsToLoad = new Set();
+            let loadedItems = new Set();
+
+            let inputList = jsonJava;
+            try { if (typeof inputList === 'string') inputList = JSON.parse(inputList); } catch(e) {}
+
+            if (Array.isArray(inputList)) {
+                inputList.forEach(function(item) {
+                    let codigo = item.cd || item;
+                    if (typeof codigo === 'string' && codigo.length > 2) {
+                        itemsToLoad.add(codigo);
+                        loadedItems.add(codigo);
+                    }
+                });
+            }
+
+            let totalItems = itemsToLoad.size;
+            let processed = 0;
+
+            // --- PROCESSAMENTO EM LOTE ---
+            const processBatch = async () => {
+                while (itemsToLoad.size > 0) {
+                    const batch = Array.from(itemsToLoad).slice(0, CONFIG.BATCH_SIZE);
+                    batch.forEach(function(id) { itemsToLoad.delete(id); });
+
+                    // Atualiza HUD Próprio
+                    if(carregamentos) {
+                        let percent = Math.round((processed / totalItems) * 100);
+                        updateStatusHUD("working", "Baixando dados (" + percent + "%)<br>" + processed + " / " + totalItems);
+                    }
+
+                    const formData = new URLSearchParams();
+                    formData.append('idRazaoSocial', idRazao);
+                    formData.append('viabilidade', viabilidade);
+                    batch.forEach(function(cd) { formData.append('json[]', cd); });
+
                     try {
-                        const gw = (typeof unsafeWindow !== 'undefined' ? unsafeWindow : window);
-                        gw.__hudBypassProximaCarga__ = true;
+                        const response = await fetch('php/arquivosComuns/carregaCompletar.php', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+                            body: formData
+                        });
 
-                        // O seu interceptador XHR em 'iniciarInterceptadorXHR'
-                        // agora verá esta flag como 'true', fará o carregamento lento
-                        // e depois resetará a flag para 'false' automaticamente.
+                        const data = await response.json();
 
-                    } catch (err) {
-                        console.error("[HUD Script] Falha ao definir a flag de bypass no 'unsafeWindow'.", err);
+                        if (Array.isArray(data)) {
+                            data.forEach(function(itemData) {
+                                let f = retornaFicha(itemData.cd);
+                                if (!jsonPrincipal[f]) jsonPrincipal[f] = [];
+
+                                jsonPrincipal[f].push(itemData);
+
+                                if(!window.__TURBO_INDEX__[f]) window.__TURBO_INDEX__[f] = {};
+                                window.__TURBO_INDEX__[f][itemData.cd] = jsonPrincipal[f].length - 1;
+
+                                extractChildren(itemData, itemsToLoad, loadedItems);
+                            });
+                        }
+                        processed += batch.length;
+                    } catch (e) {
+                        console.error("[Turbo] Erro de conexão:", e);
                     }
                 }
-            }
-        }, true); // 'true' usa a fase de CAPTURA
-    }
+            };
 
-    //Colar Coordenadas (MODIFICADO - V4 - Foco no 'OK' após colar)
-function iniciarListenerDeColarCoordenadas() {
-    // Se já foi instalado no contexto da página, não reinstala
-    try {
-        if (unsafeWindow.__coordenadasListener__) return;
-        unsafeWindow.__coordenadasListener__ = true;
-    } catch (err) {
-        if (window.__coordenadasListener__) return;
-        window.__coordenadasListener__ = true;
-    }
-
-    document.body.addEventListener('paste', async function(e) {
-        // 1. Só age ao colar em um input[name="latitude"]
-        if (!e.target || !e.target.matches || !e.target.matches('input[name="latitude"]')) return;
-
-        const latInput = e.target;
-
-        // 2. (NOVO) Encontra os elementos relativos a este input
-        const commonParent = latInput.closest('.latitude-container')?.parentElement;
-        if (!commonParent) {
-            console.warn('[HUD Script - Paste] Não foi possível encontrar "commonParent" do input.');
-            return;
-        }
-
-        const lonInput = commonParent.querySelector('input[name="longitude"]');
-        const okButton = commonParent.querySelector('button[name="ok"]');
-
-        if (!lonInput || !okButton) {
-            console.warn('[HUD Script - Paste] Não foi possível encontrar lonInput ou okButton relativos.');
-            return;
-        }
-
-        // 3. Pega o texto colado
-        const pastedText = (e.clipboardData || window.clipboardData).getData('text') || '';
-        const raw = pastedText.trim();
-        if (!raw) return;
-
-        // 4. (MODIFICADO) Helper para preencher E focar
-        function preencher(lat, lon) {
-            if (!lat || !lon) return;
-            latInput.value = lat;
-            lonInput.value = lon;
-            // --- A MÁGICA ACONTECE AQUI ---
-            okButton.focus();
-            // -----------------------------
-        }
-
-        // --- LÓGICA DE PASTE ---
-
-        // 5. Detecta coordenadas diretas no texto colado
-        const coordMatch = raw.match(/-?\d+\.\d+/g);
-        if (coordMatch && coordMatch.length >= 2) {
-            console.log('[HUD Script - Paste] Coordenadas diretas detectadas.');
-            e.preventDefault();
-            const latRaw = coordMatch[0];
-            const lonRaw = coordMatch[1];
-            preencher(latRaw, lonRaw); // <--- Chama o preencher/focar
-            return;
-        }
-
-        // 6. Detecta código de Poste (ex: PT12345)
-        const posteRegex = /^pt(\d+)$/i;
-        if (posteRegex.test(raw)) {
-            // É um código de poste. NÃO faz nada, deixa o paste padrão ocorrer.
-            console.log('[HUD Script - Paste] Código de Poste detectado. Permitindo paste padrão.');
-            return;
-        }
-
-        // 7. Detecta links (short e long)
-        const shortlinkPattern = /\b(?:https?:\/\/)?(?:maps\.app\.goo\.gl|goo\.gl\/maps|goo\.gl)\//i;
-        const longlinkPattern  = /\bhttps?:\/\/(?:www\.)?google\.[^\/]+\/maps/i;
-
-        if (shortlinkPattern.test(raw) || longlinkPattern.test(raw)) {
-            console.log('[HUD Script - Paste] Link de mapa detectado. Resolvendo...');
-            e.preventDefault();
-
-            // Feedback visual temporário (agora nos inputs corretos)
-            latInput.value = "carregando...";
-            lonInput.value = "carregando...";
-
-            try {
-                const shouldUseGM = shortlinkPattern.test(raw);
-                let resolved = { url: raw, html: '' };
-
-                if (shouldUseGM && typeof GM_xmlhttpRequest === 'function') {
-                    resolved = await resolveShortlinkWithGM(raw);
-                } else {
-                    resolved = await resolveShortlinkFetch(raw);
-                }
-
-                const urlFinal = resolved.url || raw;
-                const htmlFinal = resolved.html || '';
-
-                let coords = extractCoords(urlFinal);
-                if ((!coords || !coords.lat) && htmlFinal) {
-                    const htmlCoords = extractCoords(htmlFinal);
-                    if (htmlCoords) coords = htmlCoords;
-                }
-
-                if (coords) {
-                    preencher(coords.lat, coords.lon); // <--- Chama o preencher/focar
-                } else {
-                    latInput.value = "erro";
-                    lonInput.value = "erro";
-                }
-            } catch (err) {
-                console.error("Falha ao resolver link de mapa:", err);
-                latInput.value = "erro";
-                lonInput.value = "erro";
-            }
-            return;
-        }
-
-        // 8. Se não for coordenada, nem poste, nem link, limpa os placeholders
-        console.log('[HUD Script - Paste] Texto colado não reconhecido. Limpando campos.');
-        e.preventDefault(); // Impede que o texto inválido seja colado
-        latInput.value = "";
-        lonInput.value = "";
-
-    }, true); // uso da fase de captura para interceptar antes de inputs do site
-
-    // --- Auxiliares (Não mudaram) ---
-
-    // Usa GM_xmlhttpRequest (Tampermonkey) para contornar CORS em shortlinks
-    function resolveShortlinkWithGM(url) {
-        return new Promise((resolve, reject) => {
-            try {
-                let target = url;
-                if (!/^https?:\/\//i.test(target)) target = 'https://' + target;
-
-                GM_xmlhttpRequest({
-                    method: "GET",
-                    url: target,
-                    headers: { "User-Agent": "Mozilla/5.0 (Tampermonkey)" },
-                    onload(response) {
-                        try {
-                            const final = response.finalUrl || response.responseURL || null;
-                            const html = response.responseText || '';
-                            if (final) return resolve({ url: final, html });
-                            const meta = html.match(/<meta\s+http-equiv=["']refresh["']\s+content=["'][^;]+;\s*url=([^"']+)["']/i);
-                            if (meta) return resolve({ url: meta[1], html });
-                            resolve({ url: target, html });
-                        } catch (e) {
-                            reject(e);
+            function extractChildren(itemData, queueSet, loadedSet) {
+                const checkAndAdd = function(cd) {
+                    if (cd && cd.length > 2 && !loadedSet.has(cd)) {
+                        let f = retornaFicha(cd);
+                        if (typeof retornaIndice === 'function' && retornaIndice(f, cd) === -1) {
+                            loadedSet.add(cd);
+                            queueSet.add(cd);
+                            totalItems++;
                         }
-                    },
-                    onerror(err) { reject(err); },
-                    ontimeout(err) { reject(err); },
-                });
-            } catch (e) {
-                reject(e);
+                    }
+                };
+                if (itemData.points) itemData.points.forEach(function(p) { checkAndAdd(p.cd); });
+                if (itemData.acc && itemData.acc.itens) itemData.acc.itens.forEach(function(acc) { checkAndAdd(acc.cd); });
             }
+
+            const workers = [];
+            for (let i = 0; i < CONFIG.CONCURRENCY; i++) workers.push(processBatch());
+            await Promise.all(workers);
+
+            // --- FASE DE PLOTAGEM ---
+            if(carregamentos) updateStatusHUD("working", "Renderizando mapa...");
+
+            if (typeof carregados !== 'undefined') carregados = [];
+
+            loadedItems.forEach(function(cd) {
+                const ficha = retornaFicha(cd);
+                let indice = -1;
+
+                if (window.__TURBO_INDEX__[ficha] && window.__TURBO_INDEX__[ficha][cd] !== undefined) {
+                    indice = window.__TURBO_INDEX__[ficha][cd];
+                } else if (typeof retornaIndice === 'function') {
+                    indice = retornaIndice(ficha, cd);
+                }
+
+                if (indice !== -1) {
+                    carregados.push({ cd: cd, indice: indice, id: cd + "@Turbo" });
+                }
+            });
+
+            if (typeof retornaIndice !== 'undefined') {
+                originalRetornaIndice = retornaIndice;
+                window.retornaIndice = function(ficha, codigo) {
+                    if (window.__TURBO_INDEX__[ficha] && window.__TURBO_INDEX__[ficha][codigo] !== undefined) {
+                        return window.__TURBO_INDEX__[ficha][codigo];
+                    }
+                    return originalRetornaIndice(ficha, codigo);
+                };
+            }
+
+            try {
+                if (typeof plotaItensNoMapa === 'function') plotaItensNoMapa();
+            } catch(err) { console.error("[Turbo] Erro plotagem:", err); }
+
+            if (originalRetornaIndice) {
+                window.retornaIndice = originalRetornaIndice;
+                originalRetornaIndice = null;
+            }
+
+            try {
+                if (deveCentralizar && typeof centraliza === 'function') centraliza();
+                if (cdAbrir && typeof abreFichaDireto === 'function') abreFichaDireto(cdAbrir);
+            } catch(e) {}
+
+            isTurboRunning = false;
+
+            // Finaliza HUD Próprio
+            updateStatusHUD("finish", "Concluído.");
+        };
+
+        // --- INSTALADOR ---
+        const installTurbo = setInterval(() => {
+            if (typeof window.completaJson === 'function' && window.completaJson !== turboCompletaJson) {
+                window.completaJson = turboCompletaJson;
+                console.log("[GeoGrid Turbo] Motor ativado.");
+                clearInterval(installTurbo);
+            }
+        }, 1000);
+
+    })();
+    `;
+    (document.head || document.body || document.documentElement).appendChild(turboScript);
+
+    // Retorna data formatada YYYY-MM-DD
+    function getTodayDate() {
+        const today = new Date();
+        return today.toISOString().split('T')[0];
+    }
+
+    // Wrapper para requisições AJAX usando jQuery da página
+    function fazerRequisicaoDaPagina(url, data, debugInfo) {
+        return new Promise((resolve, reject) => {
+            const gw = (typeof unsafeWindow !== 'undefined' ? unsafeWindow : window);
+            if (!gw.jQuery) {
+                reject("jQuery da página não encontrado");
+                return;
+            }
+            gw.jQuery.ajax({
+                type: "POST",
+                url: url,
+                data: data,
+                dataType: "text",
+                success: (responseText) => {
+                    try {
+                        const dataJson = JSON.parse(responseText);
+
+                        // --- LÓGICA DE VALIDAÇÃO CORRIGIDA ---
+                        // 1. Padrão: verifica se status é true
+                        const sucessoPadrao = (dataJson.status === true || dataJson.status === "true");
+
+                        // 2. Exceção: carregaAcessoriosPoste (não devolve status, devolve 'dados')
+                        const excecaoAcessorios = (url.includes('carregaAcessoriosPoste') && dataJson.dados);
+
+                        if (sucessoPadrao || excecaoAcessorios) {
+                            resolve({ response: responseText });
+                        } else {
+                            // Se a API diz que falhou, rejeitamos
+                            reject(dataJson.mensagem || `Erro na API: ${debugInfo}`);
+                        }
+                    } catch (e) {
+                        // Se não for JSON válido
+                        if(url.includes('salvaEquipamentos') || url.includes('cadastraCaboLigacao')) {
+                            reject(`Resposta inválida em ${debugInfo}`);
+                        } else {
+                            // Para outras chamadas, resolve mesmo sem JSON (pode ser HTML)
+                            resolve({ response: responseText });
+                        }
+                    }
+                },
+                error: (xhr, status, error) => {
+                    reject(`Erro HTTP ${xhr.status}: ${error}`);
+                }
+            });
         });
     }
 
-    // Resolve via fetch (quando GM não é necessário)
-    async function resolveShortlinkFetch(url) {
-        try {
-            let target = url;
-            if (!/^https?:\/\//i.test(target)) target = 'https://' + target;
-            const resp = await fetch(target, { redirect: "follow" });
-            const html = await resp.text().catch(()=>"");
-            const finalUrl = resp.url || target;
-            return { url: finalUrl, html };
-        } catch (e) {
-            throw e;
-        }
-    }
+    // Lógica inteligente para encontrar a próxima sigla livre
+    function findNextSigla(baseSigla, keywords, existingList) {
+        const normalizedKeywords = keywords.map(k => k.toLowerCase());
 
-    // Extrai coordenadas de texto/HTML
-    function extractCoords(text) {
-        if (!text) return null;
-        let m;
-        if (m = text.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/)) return { lat: m[1], lon: m2 };
-        if (m = text.match(/@(-?\d+\.\d+),\s*(-?\d+\.\d+)/)) return { lat: m[1], lon: m[2] };
-        if (m = text.match(/[?&]q=(-?\d+\.\d+),\s*(-?\d+\.\d+)/)) return { lat: m[1], lon: m[2] };
-        if (m = text.match(/[?&]ll=(-?\d+\.\d+),\s*(-?\d+\.\d+)/)) return { lat: m[1], lon: m[2] };
-        const nums = text.match(/-?\d+\.\d+/g);
-        if (nums && nums.length >= 2) return { lat: nums[0], lon: nums[1] };
+        const matching = existingList.filter(eq => {
+            const s = eq.sigla.toLowerCase();
+            return normalizedKeywords.some(k => s.includes(k));
+        });
+
+        const suffixes = ["", " - A", " - B", " - C", " - D"];
+
+        const baseOccupied = matching.some(eq => {
+            return eq.sigla.toUpperCase() === baseSigla.toUpperCase();
+        });
+
+        if (!baseOccupied && !matching.some(eq => eq.sigla.toUpperCase() === baseSigla.toUpperCase())) {
+            return baseSigla;
+        }
+
+        for (let i = 1; i < suffixes.length; i++) {
+            const candidate = baseSigla + suffixes[i];
+            const exists = matching.some(eq => eq.sigla.toUpperCase() === candidate.toUpperCase());
+            if (!exists) return candidate;
+        }
+
         return null;
     }
-}
-
-    // --- 6. INICIALIZAÇÃO DO SCRIPT ---
-    // (Movido para cima para agrupar)
-
-    // --- 7. ATIVADOR POR TECLA ---
-    // Ouve por a tecla "+" do Numpad para ligar/desligar o HUD
-
-    document.addEventListener('keydown', function(e) {
-        // e.code === "NumpadAdd" é a tecla "+" do teclado numérico
-        if (e.code === 'NumpadAdd') {
-
-            // Previne que o "+" seja escrito em algum campo de texto
-            e.preventDefault();
-
-            // Lógica de toggle
-            if (window.__hudAtivo__) {
-                removerHUD();
-            } else {
-                criarHUD();
-            }
-        }
-    });
 
     /**
-     * (MODIFICADO) LÓGICA DE INTERCEÇÃO DO GOOGLE MAPS
-     * Vigia até que a API do Google Maps esteja pronta, e então
-     * "substitui" o construtor do Mapa para capturar a instância.
-     * ADICIONADO: __hudSearchCircle__ para guardar o círculo de busca.
+     * =======================================================================================
+     * MODULE: UI MANAGER
+     * =======================================================================================
      */
-    function iniciarInterceptadorDoMapa() {
-        // Injeta um pequeno snippet que roda no contexto da página (não no sandbox)
-        const injected = `(function(){
-            // Flags na página
-            window.__googleMapsApiDisponivel__ = false;
-            window.__googleMapInstancia__ = window.__googleMapInstancia__ || null;
-            window.__mapCaptureActive__ = window.__mapCaptureActive__ || false;
-            window.__mapClickListener__ = window.__mapClickListener__ || null;
-            // (NOVA LINHA ADICIONADA AQUI)
-            window.__hudSearchCircle__ = window.__hudSearchCircle__ || null;
+    const UIManager = {
+        config: {
+            sidebarId: 'geogrid-tools-sidebar',
+            mainPanelId: 'geogrid-tools-main-panel',
+            buttonsClass: 'gg-tool-btn',
+            themeColor: '#2d3436',
+            accentColor: '#0984e3',
+            textColor: '#dfe6e9',
+            borderColor: '#636e72'
+        },
+        currentBox: {
+            title: "Aguardando...",
+            data: [],
+            clientCache: {}
+        },
 
-            // Verifica periodicamente até a API do Google estar disponível
-            const check = setInterval(function(){
-                try {
-                    if (typeof window.google === 'object' && typeof window.google.maps === 'object') {
-                        clearInterval(check);
-                        window.__googleMapsApiDisponivel__ = true;
-                        console.log('[HUD Script - injected] Google Maps API detectada. Interceptando construtor Map...');
+        zIndexCounter: 10000,
+        isManuallyResized: false,
+        searchQuery: "",
+        isCapturing: false,
+        mapListener: null,
+        captureShield: null,
+        shieldUpdater: null,
 
-                        // Monkey-patch do construtor para capturar a instância
-                        try {
-                            const originalMap = window.google.maps.Map;
-                            window.google.maps.Map = function() {
-                                const mapInstance = new originalMap(...arguments);
-                                try {
-                                    if (!window.__googleMapInstancia__) {
-                                        window.__googleMapInstancia__ = mapInstance;
-                                        console.log('[HUD Script - injected] Instância principal do mapa capturada.');
-                                    }
-                                } catch (e) {
-                                    console.error('[HUD Script - injected] erro ao salvar instância do mapa', e);
-                                }
-                                return mapInstance;
-                            };
-                        } catch (err) {
-                            console.warn('[HUD Script - injected] não foi possível sobrescrever google.maps.Map', err);
+        init: function() {
+            this.injectStyles();
+            this.createSidebar();
+            this.bindGlobalEvents();
+            this.applyTheme();
+            console.log("[GeoGrid Tools] UI Initialized.");
+        },
+
+        applyTheme: function() {
+            const isLight = (window.__hudState__ && window.__hudState__.modoClaro) || false;
+            document.body.classList.toggle('gg-light-mode', isLight);
+        },
+
+        setLoadingState: function() {
+            const contentDiv = document.querySelector(`#${this.config.mainPanelId} .gg-panel-content`);
+            if (contentDiv) contentDiv.innerHTML = '<div class="gg-empty-state">Carregando dados da caixa...</div>';
+        },
+
+        injectStyles: function() {
+            const style = document.createElement('style');
+            style.textContent = `
+                /* --- VARIÁVEIS GLOBAIS DO TEMA --- */
+                :root {
+                    --gg-bg: ${this.config.themeColor};
+                    --gg-text: ${this.config.textColor};
+                    --gg-border: ${this.config.borderColor};
+                    --gg-accent: ${this.config.accentColor};
+                    --gg-hover: rgba(255, 255, 255, 0.1);
+                    --gg-header-bg: rgba(0, 0, 0, 0.2);
+                    --gg-shadow: rgba(0, 0, 0, 0.4);
+                    --gg-input-bg: transparent;
+                    --gg-scrollbar: #636e72;
+                    --gg-divergent: rgba(224, 108, 117, 0.2);
+                }
+                body.gg-light-mode {
+                    --gg-bg: #ffffff;
+                    --gg-text: #000000;
+                    --gg-border: #dcdde1;
+                    --gg-hover: rgba(45, 52, 54, 0.08);
+                    --gg-header-bg: rgba(0, 0, 0, 0.03);
+                    --gg-shadow: rgba(0, 0, 0, 0.15);
+                    --gg-input-bg: rgba(0, 0, 0, 0.03);
+                    --gg-scrollbar: #b2bec3;
+                    --gg-accent: #1363a1;
+                    --gg-divergent: rgba(215, 58, 73, 0.15);
+                }
+
+                /* --- ANIMAÇÕES --- */
+                #btn-location.capturing {
+                    color: #ff7675;
+                    animation: pulse 1.5s infinite;
+                }
+                @keyframes pulse {
+                    0% { box-shadow: 0 0 0 0 rgba(255, 118, 117, 0.4); }
+                    70% { box-shadow: 0 0 0 10px rgba(255, 118, 117, 0); }
+                    100% { box-shadow: 0 0 0 0 rgba(255, 118, 117, 0); }
+                }
+
+                /* --- SIDEBAR --- */
+                #${this.config.sidebarId} {
+                    position: fixed;
+                    right: 0;
+                    top: 50%;
+                    transform: translateY(-50%);
+                    width: 50px;
+                    background-color: var(--gg-bg);
+                    border-top-left-radius: 8px;
+                    border-bottom-left-radius: 8px;
+                    box-shadow: -2px 0 12px rgba(0,0,0,0.1);
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    padding: 10px 0;
+                    gap: 8px;
+                    z-index: 9999;
+                    border: 1px solid var(--gg-border);
+                    border-right: none;
+                }
+
+                .${this.config.buttonsClass} {
+                    width: 36px; height: 36px; border: none; background-color: transparent;
+                    border-radius: 6px; cursor: pointer; display: flex; justify-content: center;
+                    align-items: center; transition: all 0.2s ease; color: #b2bec3;
+                }
+                body.gg-light-mode .${this.config.buttonsClass} { color: #636e72; }
+                .${this.config.buttonsClass}:hover { background-color: var(--gg-hover); color: var(--gg-text); }
+                .${this.config.buttonsClass}.active {
+                    background-color: var(--gg-accent); color: #ffffff !important;
+                    box-shadow: 0 0 8px var(--gg-accent);
+                }
+                .${this.config.buttonsClass} svg { width: 20px; height: 20px; fill: currentColor; }
+
+                /* --- PAINÉIS GERAIS --- */
+                .gg-panel {
+                    position: fixed; background-color: var(--gg-bg); color: var(--gg-text);
+                    border: 1px solid var(--gg-border); border-radius: 6px;
+                    box-shadow: 0 5px 15px var(--gg-shadow); z-index: 9999;
+                    display: none; flex-direction: column; font-family: 'Segoe UI', Roboto, sans-serif;
+                    overflow: hidden; min-width: 250px; min-height: 150px;
+                }
+                .gg-panel-header {
+                    padding: 8px 12px; background-color: var(--gg-header-bg);
+                    border-bottom: 1px solid var(--gg-border); font-weight: 600; font-size: 13px;
+                    display: flex; justify-content: space-between; align-items: center;
+                    cursor: move; user-select: none; flex-shrink: 0;
+                }
+                .gg-panel-controls { display: flex; align-items: center; gap: 8px; }
+
+                .gg-header-btn {
+                    cursor: pointer; background: transparent; border: none; color: #b2bec3;
+                    display: flex; align-items: center; justify-content: center;
+                    padding: 4px; border-radius: 4px; transition: all 0.2s;
+                }
+                body.gg-light-mode .gg-header-btn { color: #636e72; }
+                .gg-header-btn:hover { color: var(--gg-text); background-color: var(--gg-hover); }
+                .gg-header-btn.close-btn:hover { color: #ff7675; background-color: transparent; }
+                .gg-header-btn svg { width: 14px; height: 14px; fill: currentColor; }
+                .gg-panel-close { cursor: pointer; padding: 0 5px; font-size: 16px; }
+                .gg-panel-close:hover { color: #ff7675; }
+
+                .gg-panel-content { padding: 10px; font-size: 12px; overflow-y: auto; flex-grow: 1; position: relative; }
+                .gg-empty-state { text-align: center; color: #636e72; padding: 20px; font-style: italic; }
+
+                /* --- BARRA DE PESQUISA E TOASTS --- */
+                .gg-search-container {
+                    padding: 8px 10px; background-color: rgba(0,0,0,0.1);
+                    border-bottom: 1px solid var(--gg-border); display: none;
+                }
+                .gg-search-input {
+                    width: 100%; background-color: var(--gg-input-bg); border: 1px solid var(--gg-border);
+                    color: var(--gg-text); padding: 6px 8px; border-radius: 4px;
+                    font-family: 'Segoe UI', sans-serif; font-size: 12px; outline: none;
+                }
+                .gg-search-input:focus { border-color: var(--gg-accent); }
+
+                .gg-toast {
+                    position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+                    background-color: var(--gg-accent); color: white; padding: 6px 12px;
+                    border-radius: 20px; font-size: 11px; font-weight: bold; opacity: 0;
+                    transition: opacity 0.3s; pointer-events: none; white-space: nowrap;
+                    box-shadow: 0 2px 8px rgba(0,0,0,0.3); z-index: 100;
+                }
+
+                /* --- RESIZERS --- */
+                .gg-resizer { position: absolute; background: transparent; z-index: 100; }
+                .gg-resizer.n { top: 0; left: 0; right: 0; height: 5px; cursor: n-resize; }
+                .gg-resizer.s { bottom: 0; left: 0; right: 0; height: 5px; cursor: s-resize; }
+                .gg-resizer.e { top: 0; right: 0; bottom: 0; width: 5px; cursor: e-resize; }
+                .gg-resizer.w { top: 0; left: 0; bottom: 0; width: 5px; cursor: w-resize; }
+                .gg-resizer.ne { top: 0; right: 0; width: 10px; height: 10px; cursor: ne-resize; z-index: 101; }
+                .gg-resizer.nw { top: 0; left: 0; width: 10px; height: 10px; cursor: nw-resize; z-index: 101; }
+                .gg-resizer.se { bottom: 0; right: 0; width: 10px; height: 10px; cursor: se-resize; z-index: 101; }
+                .gg-resizer.sw { bottom: 0; left: 0; width: 10px; height: 10px; cursor: sw-resize; z-index: 101; }
+
+                /* --- ELEMENTOS ESPECÍFICOS --- */
+                #${this.config.mainPanelId} { width: 350px; }
+                #geogrid-tools-notes-panel { width: 300px; height: 400px; }
+                #geogrid-tools-settings-panel { width: 300px; height: auto; max-height: 600px; }
+
+                .gg-notes-area {
+                    width: 100%; height: 100%; background-color: var(--gg-input-bg);
+                    border: none; color: var(--gg-text); padding: 10px;
+                    font-family: 'Consolas', 'Monaco', monospace; font-size: 12px;
+                    resize: none; outline: none; line-height: 1.5;
+                }
+                .gg-notes-area::-webkit-scrollbar { width: 6px; }
+                .gg-notes-area::-webkit-scrollbar-thumb { background-color: var(--gg-scrollbar); border-radius: 3px; }
+
+                /* --- CONFIGURAÇÕES --- */
+                .gg-settings-group-title {
+                    color: var(--gg-accent); font-weight: 600; font-size: 11px;
+                    text-transform: uppercase; letter-spacing: 0.5px; margin-top: 15px;
+                    margin-bottom: 8px; padding-bottom: 4px; border-bottom: 1px solid var(--gg-border);
+                }
+                .gg-settings-group-title:first-child { margin-top: 0; }
+                .gg-setting-row {
+                    display: flex; justify-content: space-between; align-items: center;
+                    padding: 8px; border-radius: 4px; cursor: pointer; transition: background-color 0.2s ease; user-select: none;
+                }
+                .gg-setting-row:hover { background-color: var(--gg-hover); }
+                .gg-setting-label { color: var(--gg-text); }
+                .gg-toggle-switch {
+                    position: relative; width: 32px; height: 18px; appearance: none;
+                    background: #b2bec3; border-radius: 20px; cursor: pointer; transition: 0.3s; outline: none; flex-shrink: 0;
+                }
+                .gg-toggle-switch:checked { background: var(--gg-accent); }
+                .gg-toggle-switch::after {
+                    content: ''; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px;
+                    background: #fff; border-radius: 50%; transition: 0.3s;
+                }
+                .gg-toggle-switch:checked::after { left: 16px; }
+
+                /* --- ESTILOS DE LISTA --- */
+                .strikethrough { text-decoration: line-through; opacity: 0.6; }
+                .network-divergent { background-color: var(--gg-divergent) !important; }
+                .gg-group-header {
+                    padding: 6px 10px; background: var(--gg-header-bg); font-weight: 600;
+                    font-size: 12px; color: var(--gg-text); border-left: 3px solid var(--gg-accent);
+                    cursor: pointer; display: flex; justify-content: space-between; align-items: center;
+                }
+                .gg-group-header:hover { background-color: var(--gg-hover); }
+                .gg-group-content { transition: max-height 0.3s ease; }
+
+                /* ==========================================================================
+                   NOVO: ESTILOS DO CADASTRO DE EQUIPAMENTO (MODERNO / FLAT DESIGN)
+                   ==========================================================================
+                */
+
+                /* Container dos botões e inputs */
+                .gg-btn-group {
+                    display: flex;
+                    flex-wrap: wrap;
+                    gap: 10px;
+                    margin-bottom: 20px;
+                    align-items: stretch;
+                }
+
+                /* Botões de Seleção (Toggles) */
+                .gg-toggle-btn {
+                    background-color: var(--gg-bg);
+                    border: 1px solid var(--gg-border);
+                    color: var(--gg-text);
+                    padding: 8px 16px;
+                    border-radius: 6px;
+                    cursor: pointer;
+                    font-size: 13px;
+                    font-family: 'Segoe UI', sans-serif;
+                    transition: all 0.2s ease-in-out;
+                    user-select: none;
+                    flex-grow: 1;
+                    text-align: center;
+                    min-width: 60px;
+                    font-weight: 500;
+                }
+
+                .gg-toggle-btn:hover {
+                    background-color: var(--gg-hover);
+                    border-color: var(--gg-accent);
+                    transform: translateY(-1px);
+                }
+
+                .gg-toggle-btn.active {
+                    background-color: var(--gg-accent);
+                    color: white;
+                    border-color: var(--gg-accent);
+                    box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+                    font-weight: 700;
+                }
+
+                /* Grupo do Input de Rede */
+                .gg-input-group {
+                    display: flex;
+                    align-items: center;
+                    gap: 10px;
+                    background-color: var(--gg-input-bg);
+                    border: 1px solid var(--gg-border);
+                    padding: 5px 12px;
+                    border-radius: 6px;
+                    flex-grow: 10;
+                    position: relative; /* Importante para o Autocomplete */
+                    transition: border-color 0.2s;
+                }
+
+                .gg-input-group:focus-within {
+                    border-color: var(--gg-accent);
+                    box-shadow: 0 0 0 2px rgba(9, 132, 227, 0.1);
+                }
+
+                .gg-input-group label {
+                    font-weight: 600;
+                    font-size: 13px;
+                    color: var(--gg-accent);
+                    white-space: nowrap;
+                }
+
+                .gg-input-group input {
+                    background: transparent;
+                    border: none;
+                    color: var(--gg-text);
+                    outline: none;
+                    width: 100%;
+                    font-size: 14px;
+                    height: 30px;
+                }
+
+                /* Títulos das Seções */
+                .gg-section-title {
+                    color: var(--gg-text);
+                    font-weight: 700;
+                    font-size: 11px;
+                    text-transform: uppercase;
+                    letter-spacing: 0.5px;
+                    margin-bottom: 8px;
+                    opacity: 0.6;
+                    border-bottom: 1px solid var(--gg-border);
+                    padding-bottom: 4px;
+                }
+
+                /* Rodapé */
+                .gg-footer-actions {
+                    display: flex;
+                    justify-content: flex-end;
+                    gap: 12px;
+                    margin-top: 25px;
+                    padding-top: 15px;
+                    border-top: 1px solid var(--gg-border);
+                    background-color: var(--gg-header-bg);
+                    margin-left: -10px;
+                    margin-right: -10px;
+                    margin-bottom: -10px;
+                    padding-right: 15px;
+                    padding-bottom: 15px;
+                    padding-left: 15px;
+                }
+
+                /* Botões de Ação */
+                .gg-action-btn {
+                    padding: 8px 20px;
+                    border-radius: 6px;
+                    border: 1px solid var(--gg-border);
+                    background-color: var(--gg-bg);
+                    color: var(--gg-text);
+                    cursor: pointer;
+                    font-weight: 600;
+                    font-size: 13px;
+                    transition: all 0.2s;
+                }
+
+                .gg-action-btn:hover { filter: brightness(0.95); }
+
+                .gg-action-btn.primary {
+                    background-color: var(--gg-accent);
+                    color: white;
+                    border-color: var(--gg-accent);
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+                }
+                .gg-action-btn.primary:hover { background-color: #0870c0; }
+
+                .gg-action-btn.danger {
+                    color: #ff7675;
+                    border-color: transparent;
+                    background: transparent;
+                }
+                .gg-action-btn.danger:hover { background-color: rgba(255, 118, 117, 0.1); }
+
+                /* Autocomplete (Dropdown) */
+                .gg-autocomplete-suggestions {
+                    display: none;
+                    position: absolute;
+                    top: 100%;
+                    left: 0;
+                    right: 0;
+                    background-color: var(--gg-bg);
+                    border: 1px solid var(--gg-border);
+                    border-top: none;
+                    border-bottom-left-radius: 6px;
+                    border-bottom-right-radius: 6px;
+                    z-index: 1000;
+                    max-height: 200px;
+                    overflow-y: auto;
+                    box-shadow: 0 10px 20px rgba(0,0,0,0.15);
+                }
+
+                .gg-suggestion-item {
+                    padding: 8px 12px;
+                    cursor: pointer;
+                    font-size: 12px;
+                    color: var(--gg-text);
+                    border-bottom: 1px solid var(--gg-border);
+                }
+                .gg-suggestion-item:last-child { border-bottom: none; }
+                .gg-suggestion-item:hover { background-color: var(--gg-accent); color: white; }
+                .gg-suggestion-item.loading { color: #b2bec3; font-style: italic; cursor: default; }
+                .gg-suggestion-item.loading:hover { background-color: transparent; color: #b2bec3; }
+            `;
+            document.head.appendChild(style);
+        },
+
+        createSidebar: function() {
+            const sidebar = document.createElement('div');
+            sidebar.id = this.config.sidebarId;
+
+            const buttons = [
+                { id: 'btn-clients', title: 'Painel de Clientes', icon: '<path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/>', action: () => this.toggleMainPanel() },
+                { id: 'btn-notes', title: 'Bloco de Notas', icon: '<path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/>', action: () => this.toggleNotesPanel() },
+
+                // ATUALIZADO: Botão Localização
+                {
+                    id: 'btn-location',
+                    title: 'Localização (Caixa Aberta ou Capturar no Mapa)',
+                    icon: '<path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>',
+                    action: () => this.handleLocationAction()
+                },
+
+                { id: 'btn-settings', title: 'Configurações', icon: '<path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L5.09 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.58 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>', action: () => this.toggleSettingsPanel() }
+            ];
+
+            buttons.forEach(btnData => {
+                const btn = document.createElement('button');
+                btn.className = this.config.buttonsClass;
+                btn.title = btnData.title;
+                btn.id = btnData.id;
+                btn.innerHTML = `<svg viewBox="0 0 24 24">${btnData.icon}</svg>`;
+
+                if (btnData.action) {
+                    btn.addEventListener('click', (e) => {
+                        // Lógica de Toggle visual apenas para painéis
+                        if (btnData.id !== 'btn-location') {
+                            const isActive = btn.classList.contains('active');
+                            if (!isActive) {
+                                btn.classList.add('active');
+                                btnData.action(true);
+                            } else {
+                                btn.classList.remove('active');
+                                btnData.action(false);
+                            }
+                        } else {
+                            // Botão de localização tem lógica própria
+                            btnData.action();
                         }
-                    }
-                } catch (e) { /* Ignore */ }
-            }, 100);
-        })();`;
-
-        const s = document.createElement('script');
-        s.textContent = injected;
-        (document.head || document.documentElement).appendChild(s);
-        // removemos o elemento imediatamente — o script já foi executado no contexto da página
-        s.parentNode.removeChild(s);
-    }
-
-
-    /**
-     * (MODIFICADO - V3) Intercepta cliques em botões 'OK' para buscar poste.
-     * AGORA USA A API carregaCompletar.php
-     */
-    function iniciarListenerDeBuscaPoste() {
-        document.body.addEventListener('click', async function(e) {
-            const okButton = e.target.closest('button[name="ok"]');
-            if (!okButton) { return; }
-
-            console.log('[HUD Script - Busca Poste] Botão OK clicado.');
-
-            const commonParent = okButton.closest('.buttons-container')?.parentElement;
-            if (!commonParent) {
-                console.warn('[HUD Script - Busca Poste] Não foi possível encontrar o "commonParent" do botão.');
-                return;
-            }
-
-            const latInput = commonParent.querySelector('input[name="latitude"]');
-            const lonInput = commonParent.querySelector('input[name="longitude"]');
-            if (!latInput || !lonInput) {
-                console.warn('[HUD Script - Busca Poste] Inputs de Lat/Lon não encontrados.');
-                return;
-            }
-
-            const latValue = latInput.value.trim();
-            const posteRegex = /^pt(\d+)$/i;
-            const match = latValue.match(posteRegex);
-
-            if (!match) { return; }
-
-            console.log('[HUD Script - Busca Poste] CÓDIGO DE POSTE DETECTADO! Interceptando clique.');
-            e.preventDefault();
-            e.stopPropagation();
-
-            const posteCode = `PT${match[1]}`;
-            console.log(`[HUD Script - Busca Poste] Buscando API por: ${posteCode}`);
-            latInput.value = "Buscando poste...";
-            lonInput.value = "Aguarde...";
-
-            try {
-                // --- INÍCIO DAS MODIFICAÇÕES DA API ---
-
-                // 1. (MODIFICADO) Monta o novo payload
-                const body = new URLSearchParams();
-                body.append('idRazaoSocial', '46');
-                body.append('json[]', posteCode); // Trocado 'poste' por 'json[]'
-                body.append('viabilidade', 'cabos,ficha_equipamento,ficha_terminal');
-                // O campo 'ficha' foi removido
-
-                // 2. (MODIFICADO) Faz a requisição para a nova URL
-                const response = await new Promise((resolve, reject) => {
-                    GM_xmlhttpRequest({
-                        method: "POST",
-                        url: "http://172.16.6.57/geogrid/aconcagua/php/arquivosComuns/carregaCompletar.php",
-                        data: body.toString(),
-                        headers: { "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8" },
-                        onload: resolve,
-                        onerror: reject,
-                        ontimeout: reject
                     });
+                }
+                sidebar.appendChild(btn);
+            });
+            document.body.appendChild(sidebar);
+        },
+
+        // --- Helpers: Drag & Resize ---
+        makeDraggable: function(el, handle) {
+            let isDragging = false, startX, startY, initialLeft, initialTop;
+            handle.addEventListener('mousedown', (e) => {
+                if (e.target.closest('.gg-header-btn') || e.target.closest('.gg-panel-close')) return;
+                isDragging = true; startX = e.clientX; startY = e.clientY;
+                initialLeft = el.offsetLeft; initialTop = el.offsetTop;
+                el.style.width = getComputedStyle(el).width; el.style.height = getComputedStyle(el).height; el.style.right = 'auto';
+                el.style.cursor = 'grabbing'; document.body.style.userSelect = 'none';
+            });
+            document.addEventListener('mousemove', (e) => {
+                if (!isDragging) return;
+                el.style.left = `${initialLeft + (e.clientX - startX)}px`;
+                el.style.top = `${initialTop + (e.clientY - startY)}px`;
+            });
+            document.addEventListener('mouseup', () => {
+                if(isDragging) { isDragging = false; el.style.cursor = 'default'; document.body.style.userSelect = ''; }
+            });
+        },
+
+        makeResizable: function(el) {
+            const directions = ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'];
+            directions.forEach(dir => {
+                const resizer = document.createElement('div');
+                resizer.className = `gg-resizer ${dir}`;
+                el.appendChild(resizer);
+                resizer.addEventListener('mousedown', (e) => {
+                    e.preventDefault(); e.stopPropagation();
+                    const startX = e.clientX, startY = e.clientY;
+                    const startW = parseInt(document.defaultView.getComputedStyle(el).width, 10);
+                    const startH = parseInt(document.defaultView.getComputedStyle(el).height, 10);
+                    const startL = el.offsetLeft, startT = el.offsetTop;
+
+                    const onMouseMove = (eMove) => {
+                        const dx = eMove.clientX - startX, dy = eMove.clientY - startY;
+                        if (dir.includes('e')) el.style.width = `${startW + dx}px`;
+                        else if (dir.includes('w')) { el.style.width = `${startW - dx}px`; el.style.left = `${startL + dx}px`; }
+                        if (dir.includes('s')) el.style.height = `${startH + dy}px`;
+                        else if (dir.includes('n')) { el.style.height = `${startH - dy}px`; el.style.top = `${startT + dy}px`; }
+                    };
+
+                    const onMouseUp = () => {
+                        // NOVO: Usuário mexeu, bloqueia o auto-resize para esta sessão
+                        this.isManuallyResized = true;
+                        document.removeEventListener('mousemove', onMouseMove);
+                        document.removeEventListener('mouseup', onMouseUp);
+                    };
+
+                    document.addEventListener('mousemove', onMouseMove); document.addEventListener('mouseup', onMouseUp);
+                });
+            });
+        },
+
+        calculateSmartPosition: function(panelEl) {
+            const sidebarWidth = 60, gap = 15;
+            let currentRightEdge = sidebarWidth;
+            const visiblePanels = Array.from(document.querySelectorAll('.gg-panel')).filter(p => p.id !== panelEl.id && p.style.display === 'flex');
+            visiblePanels.sort((a, b) => b.getBoundingClientRect().right - a.getBoundingClientRect().right);
+            for (let p of visiblePanels) {
+                const rect = p.getBoundingClientRect();
+                if ((window.innerWidth - rect.right) < (currentRightEdge + gap + 5)) {
+                    currentRightEdge = window.innerWidth - rect.left;
+                }
+            }
+            panelEl.style.transform = 'none'; panelEl.style.right = 'auto';
+            const panelWidth = panelEl.offsetWidth || 350;
+            panelEl.style.left = (window.innerWidth - (currentRightEdge + panelWidth + gap)) + 'px';
+            panelEl.style.top = '150px';
+        },
+
+        // --- Helper: Normalize String for Comparison ---
+        normalizeNetworkName: function(name) {
+            // Remove prefixos numéricos (ex: "127 - ") e espaços extras
+            return name ? name.replace(/^\d+\s*-\s*/, "").trim().toLowerCase() : "";
+        },
+
+        // --- RENDER LOGIC (v3.3.0 - Final Version) ---
+        renderClientList: function() {
+            const panel = document.getElementById(this.config.mainPanelId);
+            const contentDiv = panel ? panel.querySelector('.gg-panel-content') : null;
+            if (!contentDiv) return;
+
+            contentDiv.innerHTML = '';
+
+            // Configurações
+            const showName = window.__hudState__.exibirNomeCliente;
+            const highlightDivergent = window.__hudState__.destacarRedesDivergentes;
+
+            // 1. Mapeamento Global de Redes (Para verificar divergência corretamente)
+            const validNetworksInBox = new Set();
+            if (ultimaAPI?.dados?.nome_rede) {
+                const r = this.normalizeNetworkName(ultimaAPI.dados.nome_rede);
+                if(r) validNetworksInBox.add(r);
+            }
+            equipamentosOrdem.forEach(id => {
+                const eq = equipamentosInfo[id];
+                if (eq && eq.nomeRede) {
+                    const r = this.normalizeNetworkName(eq.nomeRede);
+                    if(r) validNetworksInBox.add(r);
+                }
+            });
+
+            // Ordenação Visual (Por Demanda sempre no topo)
+            const ordemVisual = [...equipamentosOrdem].sort((a, b) => {
+                if (a === '__porDemanda__') return -1;
+                if (b === '__porDemanda__') return 1;
+                return 0;
+            });
+
+            let hasContent = false;
+
+            ordemVisual.forEach(equipId => {
+                const equip = equipamentosInfo[equipId];
+                if (!equip) return;
+
+                const isDemanda = equipId === '__porDemanda__';
+                const qtdClientes = equip.clientes ? equip.clientes.length : 0;
+
+                // Filtros de Exibição (Vazios ou muito pequenos, exceto Demanda)
+                if (!equip.clientes || qtdClientes === 0) return;
+                if (!isDemanda && qtdClientes < 8) return;
+
+                hasContent = true;
+
+                const group = document.createElement('div');
+                group.style.cssText = "margin-bottom: 12px; background: rgba(0,0,0,0.1); border-radius: 4px; overflow: hidden;";
+
+                // --- HEADER DO EQUIPAMENTO ---
+                const groupHeader = document.createElement('div');
+                groupHeader.className = 'gg-group-header';
+                // Estilo flex para separar título do botão de sinal
+                groupHeader.style.cssText = `padding: 6px 10px; background: var(--gg-header-bg); font-weight: 600; font-size: 12px; color: var(--gg-text); border-left: 3px solid var(--gg-accent); display: flex; justify-content: space-between; align-items: center; cursor: pointer;`;
+
+                // Título + Quantidade
+                const nomeRedeEquip = equip.nomeRede || "Rede Desconhecida";
+                const labelQtd = isDemanda ? "Demanda" : `${qtdClientes} Portas`;
+                const titleSpan = document.createElement('span');
+                titleSpan.innerHTML = `${nomeRedeEquip} <span style="font-size:10px; opacity:0.7">(${labelQtd})</span>`;
+
+                // Botão de Sinal (Novo)
+                const btnSignal = document.createElement('button');
+                btnSignal.className = 'gg-header-btn';
+                btnSignal.title = "Verificar Sinal (Segure Ctrl para todos)";
+                btnSignal.innerHTML = '<svg viewBox="0 0 24 24"><path d="M1 9l2 2c4.4-4.4 11.6-4.4 16 0l2-2C16.8-2.8 7.2-2.8 1 9zm8 8l3 3 3-3c-1.6-1.6-4.4-1.6-6 0zm-4-4l2 2c2.2-2.2 5.8-2.2 8 0l2-2c-3.3-3.3-8.7-3.3-12 0z"/></svg>';
+                btnSignal.style.cssText = "padding: 2px; height: 20px; width: 20px; min-width: 20px;";
+
+                // Ação do Botão de Sinal
+                btnSignal.onclick = (e) => {
+                    e.stopPropagation(); // Impede que o grupo minimize ao clicar no botão
+                    const isBatch = e.ctrlKey; // Verifica se CTRL está pressionado
+                    this.verifySignal(equipId, isBatch, btnSignal);
+                };
+
+                // Montagem do Header
+                groupHeader.appendChild(titleSpan);
+                groupHeader.appendChild(btnSignal);
+
+                // Ação de Minimizar (Accordion)
+                groupHeader.onclick = (e) => {
+                    // Segurança extra: só minimiza se o alvo não for o botão
+                    if (e.target !== btnSignal && !btnSignal.contains(e.target)) {
+                        const c = group.querySelector('.gg-group-content');
+                        c.style.display = c.style.display === 'none' ? 'block' : 'none';
+                        // Reajusta altura do painel após animação
+                        setTimeout(() => this.adjustPanelHeight(), 50);
+                    }
+                };
+                group.appendChild(groupHeader);
+
+                // --- CONTEÚDO (LISTA DE CLIENTES) ---
+                const groupContent = document.createElement('div');
+                groupContent.className = 'gg-group-content';
+                group.appendChild(groupContent);
+
+                const clientesOrdenados = [...equip.clientes].sort((a,b) => {
+                    if (isDemanda) return 0;
+                    return parseInt(a.porta) - parseInt(b.porta);
                 });
 
-                // 3. (MODIFICADO) Processa a nova resposta (que é um array direto)
-                const data = JSON.parse(response.responseText);
-                const loc = (Array.isArray(data) && data.length > 0) ? data[0] : null;
+                clientesOrdenados.forEach(item => {
+                    const row = document.createElement('div');
+                    row.className = 'gg-client-row';
+                    // Adiciona ID ao dataset para facilitar atualização individual via DOM
+                    row.dataset.clientId = item.id || "";
+                    row.style.cssText = "display: flex; align-items: center; padding: 6px 10px; border-bottom: 1px solid rgba(255,255,255,0.03); font-size: 12px; transition: background 0.2s; cursor: pointer;";
 
-                // --- FIM DAS MODIFICAÇÕES DA API ---
+                    // Eventos da Linha
+                    row.onmouseover = () => row.style.backgroundColor = "var(--gg-hover)";
+                    row.onmouseout = () => row.style.backgroundColor = "transparent";
+                    row.onclick = () => row.classList.toggle('strikethrough'); // Taxar
 
-                if (loc && loc.lat && loc.lng) {
-                    console.log(`[HUD Script - Busca Poste] Sucesso! Coordenadas: ${loc.lat}, ${loc.lng}`);
-                    latInput.value = loc.lat;
-                    lonInput.value = loc.lng;
+                    let statusColor = '#b2bec3'; // Cinza (Livre)
+                    let mainText = item.status || 'Livre';
+                    let subText = '';
 
-                    console.log('[HUD Script - Busca Poste] Preenchido. Executando clique original...');
-                    okButton.click();
-                } else {
-                    console.warn('[HUD Script - Busca Poste] Poste não encontrado ou resposta inválida:', data);
-                    latInput.value = "Poste não encontrado";
-                    lonInput.value = "";
-                }
-            } catch (err) {
-                console.error('[HUD Script - Busca Poste] Erro na requisição ou parsing:', err);
-                latInput.value = "Erro (Ver console F12)";
-                lonInput.value = "";
-            }
-        }, true);
-    }
+                    if (item.id && infoClientes[item.id]) {
+                        const dados = infoClientes[item.id].data;
+                        const reg = dados.registro || {};
+                        const nomeFull = reg.nome || "Desconhecido";
+                        const redeClienteRaw = dados.rede?.rede || "";
 
-    /**
-     * (MODIFICADO) Intercepta a busca por poste no menu principal.
-     * (NOVO) Se 'CTRL' + 'Enter' for pressionado, ignora o script
-     * e permite a busca padrão do site.
-     * (REMOVIDO) Toda a lógica de pré-carregamento de acessórios foi removida.
-     */
-    function iniciarListenerDePesquisaRapida() {
-        document.body.addEventListener('keydown', async function(e) {
+                        // Parse: "123 - Contrato - Nome (Status)"
+                        const parts = nomeFull.split(' - ');
+                        let contrato = "ID: " + item.id;
+                        let nomeReal = nomeFull;
 
-            // 1. Verifica se o 'Enter' foi pressionado
-            if (e.key !== 'Enter') {
-                return;
-            }
-
-            // --- (INÍCIO DA NOVA LÓGICA DE BYPASS) ---
-            // 2. Verifica se a tecla 'CTRL' está pressionada
-            if (e.ctrlKey) {
-                console.log('[HUD Script - Pesquisa Rápida] CTRL pressionado. Ignorando script e permitindo busca padrão do site.');
-                // Não faz e.preventDefault(), apenas retorna
-                // para que o listener padrão do site seja executado.
-                return;
-            }
-            // --- (FIM DA NOVA LÓGICA DE BYPASS) ---
-
-            const searchInput = e.target;
-
-            // 3. Verifica se o alvo é o input de pesquisa correto
-            if (!searchInput || !searchInput.matches('input[name="pesquisar"]')) {
-                return;
-            }
-
-            // 4. (Fallback)
-            if (searchInput.dataset.isHudFallback) {
-                delete searchInput.dataset.isHudFallback;
-                return;
-            }
-
-            // 5. Verifica se o valor da pesquisa parece um código de Poste.
-            const searchText = searchInput.value.trim();
-            const posteRegex = /^pt(\d+)$/i;
-            const match = searchText.match(posteRegex);
-
-            if (!match) {
-                // Não é um poste, deixa a busca padrão do site ocorrer
-                return;
-            }
-
-            // 6. É UM CÓDIGO DE POSTE! Interceptamos o evento.
-            console.log('[HUD Script - Pesquisa Rápida] Poste detectado! Interceptando e iniciando busca...');
-            e.preventDefault();
-            e.stopPropagation();
-
-            const posteCode = `PT${match[1]}`;
-            const originalPlaceholder = searchInput.placeholder;
-            searchInput.value = `Buscando ${posteCode}...`;
-            searchInput.disabled = true;
-
-            try {
-                // 7. Monta o payload e faz a requisição principal
-                const body = new URLSearchParams();
-                body.append('idRazaoSocial', '46');
-                body.append('json[]', posteCode);
-                body.append('viabilidade', 'cabos,ficha_equipamento,ficha_terminal');
-
-                const response = await fazerRequisicaoDaPagina(
-                    "http://172.16.6.57/geogrid/aconcagua/php/arquivosComuns/carregaCompletar.php",
-                    body.toString(),
-                    `Busca Rápida Poste ${posteCode}`
-                );
-
-                const data = JSON.parse(response.response);
-                const loc = (Array.isArray(data) && data.length > 0) ? data[0] : null;
-
-                if (loc && loc.lat && loc.lng) {
-                    // 8. SUCESSO! (Lógica de UI)
-                    console.log(`[HUD Script - Pesquisa Rápida] Sucesso! Coords: ${loc.lat}, ${loc.lng}`);
-                    const gw = (typeof unsafeWindow !== 'undefined' ? unsafeWindow : window);
-                    const map = gw.__googleMapInstancia__;
-
-                    if (map && gw.google && gw.google.maps) {
-                        const newCoords = { lat: parseFloat(loc.lat), lng: parseFloat(loc.lng) };
-                        map.setCenter(newCoords);
-                        map.setZoom(19);
-
-                        if (gw.__hudSearchCircle__) {
-                            gw.__hudSearchCircle__.setMap(null);
-                            gw.__hudSearchCircle__ = null;
+                        if (parts.length >= 3) {
+                            contrato = parts[1];
+                            nomeReal = parts.slice(2).join(' - ').replace(/\(ATIVO\)|\(SUSPENSO\)|\(CANCELADO\)/g, '').trim();
                         }
 
-                        gw.__hudSearchCircle__ = new gw.google.maps.Circle({
-                            strokeColor: '#FF0000',
-                            strokeOpacity: 0.8,
-                            strokeWeight: 2,
-                            fillColor: '#FF0000',
-                            fillOpacity: 0.35,
-                            map: map,
-                            center: newCoords,
-                            radius: 20
-                        });
+                        // Tratamento do Nome da Rede do Cliente
+                        const redeLimpa = redeClienteRaw.replace(/Card \d+ Porta \d+$/i, "").trim();
+                        const displayRede = redeLimpa ? ` - ${redeLimpa}` : "";
 
-                        searchInput.value = posteCode;
+                        // Define Texto Principal
+                        mainText = `${contrato}${displayRede}`;
+
+                        // Define Subtexto (Nome ou Vazio dependendo da config)
+                        if (showName) {
+                            subText = nomeReal;
+                        }
+
+                        // Cores por Status
+                        if (nomeFull.includes('ATIVO')) statusColor = '#55efc4'; // Verde
+                        else if (nomeFull.includes('SUSPENSO')) statusColor = '#ffeaa7'; // Amarelo
+                        else if (nomeFull.includes('CANCELADO')) statusColor = '#ff7675'; // Vermelho
+                        else statusColor = '#55efc4';
+
+                        // Verificação de Divergência
+                        if (highlightDivergent && !isDemanda) {
+                            const clientRedeNorm = this.normalizeNetworkName(redeLimpa);
+                            if (clientRedeNorm.length > 0) {
+                                let matchFound = false;
+                                // Verifica se a rede do cliente existe na "Whitelist" da caixa
+                                for (let boxNet of validNetworksInBox) {
+                                    if (clientRedeNorm.includes(boxNet) || boxNet.includes(clientRedeNorm)) {
+                                        matchFound = true; break;
+                                    }
+                                }
+                                if (!matchFound) row.classList.add('network-divergent');
+                            }
+                        }
+
+                    } else if (item.id) {
+                        statusColor = '#74b9ff'; // Azul (Carregando)
+                        mainText = "Carregando...";
+                        subText = `ID: ${item.id}`;
                     } else {
-                        console.error('[HUD Script - Pesquisa Rápida] Instância do mapa ou API Google não encontrada!');
-                        searchInput.value = 'Mapa não achado!';
+                        // Sem cliente (Portas Vazias ou Especiais)
+                        if (item.status === 'Ocupada') statusColor = '#ffeaa7';
+                        if (item.status === 'Reservada') statusColor = '#74b9ff';
+                        if (item.status === 'Bloqueada') statusColor = '#ff7675';
                     }
 
-                    // --- (LÓGICA DE PRÉ-CARREGAMENTO FOI REMOVIDA DAQUI) ---
+                    // --- LÓGICA DE CACHE DE SINAL ---
+                    // Se já existe sinal verificado para este cliente, exibe NO LUGAR do nome
+                    let subTextColor = 'var(--gg-text)';
+                    let subTextOpacity = '0.7';
+                    let subTextWeight = 'normal';
 
-                } else {
-                    // 9. FALHA (API retornou sem dados) -> Aciona o Fallback
-                    console.warn('[HUD Script - Pesquisa Rápida] Poste não encontrado via API. Acionando busca padrão do site...');
-                    triggerFallbackSearch(searchText, searchInput);
-                }
-            } catch (err) {
-                // 10. FALHA (Erro de rede/JSON) -> Aciona o Fallback
-                console.error('[HUD Script - Pesquisa Rápida] Erro na requisição. Acionando busca padrão do site...', err);
-                triggerFallbackSearch(searchText, searchInput);
-            } finally {
-                searchInput.disabled = false;
-                searchInput.placeholder = originalPlaceholder;
-            }
+                    if (item.id && this.currentBox.signalCache && this.currentBox.signalCache[item.id]) {
+                        const cache = this.currentBox.signalCache[item.id];
+                        subText = cache.text; // Ex: "-20.50 dBm"
+                        subTextColor = cache.color; // Cor baseada na qualidade
+                        subTextOpacity = '1';
+                        subTextWeight = 'bold';
+                    }
+                    // --------------------------------
 
-            function triggerFallbackSearch(searchText, searchInput) {
-                searchInput.value = searchText;
-                searchInput.dataset.isHudFallback = 'true';
-                const enterEvent = new KeyboardEvent('keydown', {
-                    key: 'Enter', code: 'Enter', bubbles: true
+                    const dot = `<span style="width: 8px; height: 8px; background: ${statusColor}; border-radius: 50%; display: inline-block; margin-right: 10px; flex-shrink: 0;"></span>`;
+                    const portNum = `<strong style="color: var(--gg-accent); margin-right: 10px; min-width: 20px;">${item.porta}</strong>`;
+
+                    // Montagem HTML da Linha
+                    let contentHTML = '';
+                    if (subText) {
+                        contentHTML = `
+                            <div style="display:flex; flex-direction:column; line-height: 1.3;">
+                                <span style="color: var(--gg-text); font-weight:600;">${mainText}</span>
+                                <span class="gg-client-subtext" style="color: ${subTextColor}; opacity: ${subTextOpacity}; font-weight: ${subTextWeight}; font-size: 11px;">${subText}</span>
+                            </div>`;
+                    } else {
+                        // Se não tem subtexto (Nome oculto e sem sinal), ajusta cor do principal
+                        const color = item.id ? 'var(--gg-text)' : '#636e72';
+                        const style = item.id ? 'font-weight:600;' : 'font-style: italic;';
+                        contentHTML = `<span style="color: ${color}; ${style}">${mainText}</span>`;
+                    }
+
+                    row.innerHTML = dot + portNum + contentHTML;
+                    groupContent.appendChild(row);
                 });
-                searchInput.dispatchEvent(enterEvent);
+
+                contentDiv.appendChild(group);
+            });
+
+            if (!hasContent) {
+                contentDiv.innerHTML += '<div class="gg-empty-state">Caixa vazia ou sem equipamentos compatíveis.</div>';
             }
 
-        }, true);
-    }
+            this.adjustPanelHeight();
+        },
 
-    /**
-     * (MODIFICADO) Intercepta o clique no botão "Adicionar Equipamento"
-     * (FINAL) Adiciona a lógica de validação e criação da "Ponte".
-     * (FINAL) Adiciona verificação de duplicatas e sufixo automático (A, B, C, D).
-     * (FINAL) Corrige 'extensao' para 'expansao'.
-     * (FINAL) Adiciona verificação de status/mensagem no 'salvaEquipamentos'.
-     */
-    function iniciarListenerAdicionarEquipamento() {
-        document.body.addEventListener('click', function(e) {
+        // --- PANELS ---
+        createMainPanel: function() {
+            if (document.getElementById(this.config.mainPanelId)) return;
 
-            // Etapa de Fallback para "Tela Padrão"
-            if (state.cadastroEquipamentoFallback) {
-                console.log('[HUD Script] Flag de fallback detectada. Deixando clique original passar.');
-                state.cadastroEquipamentoFallback = false;
-                return;
-            }
+            const panel = document.createElement('div');
+            panel.id = this.config.mainPanelId;
+            panel.className = 'gg-panel';
 
-            // 1. Procura pelo botão alvo
-            const addButton = e.target.closest('.adicionar-equipamento-recipiente');
+            // Header
+            const header = document.createElement('div');
+            header.className = 'gg-panel-header';
 
-            if (!addButton) { return; }
+            const title = document.createElement('span');
+            title.textContent = 'Clientes';
 
-            // 2. INTERCEPTAÇÃO
-            console.log('[HUD Script] Botão "Adicionar Equipamento" interceptado!');
-            e.preventDefault();
-            e.stopPropagation();
+            const controls = document.createElement('div');
+            controls.className = 'gg-panel-controls';
 
-            // 3. Verifica se o painel já está aberto
-            if (state.cadastroEquipamentoAtivo) {
-                console.log('[HUD Script] Painel de cadastro já está ativo.');
-                return;
-            }
-            state.cadastroEquipamentoAtivo = true;
+            // --- BOTÃO PESQUISAR ---
+            const btnSearch = document.createElement('button');
+            btnSearch.className = 'gg-header-btn';
+            btnSearch.title = "Pesquisar";
+            btnSearch.innerHTML = '<svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>';
 
-            // 4. Cria o elemento de conteúdo para o nosso novo painel
-            const content = document.createElement("div");
-            content.className = "hud-cadastro-content";
+            btnSearch.onclick = (e) => {
+                e.stopPropagation();
+                const searchBar = panel.querySelector('.gg-search-container');
+                const input = panel.querySelector('.gg-search-input');
 
-            // 4.1. Cria o 'corpo' do painel
-            const body = document.createElement("div");
-            body.className = "hud-cadastro-body";
-            body.innerHTML = `
-                <div class="hud-cadastro-header">Geral</div>
-                <div class="hud-btn-group">
-                    <div class="hud-input-group">
-                        <label for="hud-cadastro-rede">Rede:</label>
-                        <input type="text" id="hud-cadastro-rede" name="rede" class="hud-cadastro-input" autocomplete="off">
-                    </div>
-                    <button class="hud-toggle-btn" data-value="ponte">Ponte</button>
-                    <button class="hud-toggle-btn" data-value="rede_1x2">1x2 Rede</button>
-                </div>
-
-                <div class="hud-cadastro-header">Splinter 1x2</div>
-                <div class="hud-btn-group">
-                    <button class="hud-toggle-btn" data-value="1x2_5/95">5/95</button>
-                    <button class="hud-toggle-btn" data-value="1x2_10/90">10/90</button>
-                    <button class="hud-toggle-btn" data-value="1x2_15/85">15/85</button>
-                    <button class="hud-toggle-btn" data-value="1x2_20/80">20/80</button>
-                    <button class="hud-toggle-btn" data-value="1x2_30/70">30/70</button>
-                    <button class="hud-toggle-btn" data-value="1x2_50/50">50/50</button>
-                </div>
-
-                <div class="hud-cadastro-header">Splinter 1x8</div>
-                <div class="hud-btn-group">
-                    <button class="hud-toggle-btn" data-value="1x8_cliente">Cliente</button>
-                    <button class="hud-toggle-btn" data-value="1x8_expansao">Expansão</button>
-                </div>
-            `;
-
-            // 4.2. Cria o 'rodapé' do painel
-            const footer = document.createElement("div");
-            footer.className = "hud-cadastro-footer";
-            footer.innerHTML = `
-                <button class="hud-footer-btn" id="hud-cadastro-padrao">Tela Padrão</button>
-                <button class="hud-footer-btn danger" id="hud-cadastro-cancelar">Cancelar</button>
-                <button class="hud-footer-btn primary" id="hud-cadastro-confirmar">Confirmar</button>
-            `;
-
-            // 4.3. Monta o painel
-            content.appendChild(body);
-            content.appendChild(footer);
-
-            // 5. Define as dimensões e a posição inicial
-            const width = 840;
-            const height = 530;
-            const position = {
-                width: `${width}px`,
-                height: `${height}px`,
-                top: (window.innerHeight - height) / 2,
-                left: (window.innerWidth - width) / 2
+                if (searchBar.style.display === 'none' || searchBar.style.display === '') {
+                    searchBar.style.display = 'block';
+                    input.focus();
+                    btnSearch.style.color = this.config.accentColor;
+                } else {
+                    searchBar.style.display = 'none';
+                    this.searchQuery = ""; // Limpa busca ao fechar
+                    input.value = "";
+                    this.renderClientList(); // Restaura lista
+                    btnSearch.style.color = "";
+                }
+                this.adjustPanelHeight(); // Ajusta altura com a nova barra
             };
 
-            // 6. Cria o painel
-            const newPanel = createDraggablePanel(
-                'hudAdicionarEquipamento',
-                'Cadastro Rápido de Equipamento',
-                content,
-                position
+            // --- BOTÃO COPIAR ---
+            const btnCopy = document.createElement('button');
+            btnCopy.className = 'gg-header-btn';
+            btnCopy.title = "Copiar lista";
+            btnCopy.innerHTML = '<svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>';
+
+            btnCopy.onclick = (e) => {
+                e.stopPropagation();
+                this.copyToClipboard(panel);
+            };
+
+            const btnClose = document.createElement('button');
+            btnClose.className = 'gg-header-btn close-btn';
+            btnClose.title = "Fechar";
+            btnClose.innerHTML = '<svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>';
+            btnClose.onclick = (e) => {
+                e.stopPropagation();
+                this.toggleMainPanel(false);
+                const btn = document.getElementById('btn-clients');
+                if(btn) btn.classList.remove('active');
+            };
+
+            controls.appendChild(btnSearch);
+            controls.appendChild(btnCopy);
+            controls.appendChild(btnClose);
+            header.appendChild(title);
+            header.appendChild(controls);
+
+            // -- Search Container --
+            const searchContainer = document.createElement('div');
+            searchContainer.className = 'gg-search-container';
+            const searchInput = document.createElement('input');
+            searchInput.className = 'gg-search-input';
+            searchInput.placeholder = "Filtrar por nome, contrato ou porta...";
+
+            searchInput.addEventListener('input', (e) => {
+                this.searchQuery = e.target.value.toLowerCase();
+                this.renderClientList(); // Re-renderiza com filtro
+            });
+
+            searchContainer.appendChild(searchInput);
+
+            // -- Content --
+            const content = document.createElement('div');
+            content.className = 'gg-panel-content';
+            content.innerHTML = '<div class="gg-empty-state">Aguardando dados...</div>';
+
+            // -- Toast (Hidden) --
+            const toast = document.createElement('div');
+            toast.className = 'gg-toast';
+            toast.textContent = 'Copiado!';
+
+            panel.appendChild(header);
+            panel.appendChild(searchContainer);
+            panel.appendChild(content);
+            panel.appendChild(toast); // Add toast to panel
+            document.body.appendChild(panel);
+
+            this.makeDraggable(panel, header);
+            this.makeResizable(panel);
+        },
+
+        createNotesPanel: function() {
+            if (document.getElementById('geogrid-tools-notes-panel')) return;
+            const panel = document.createElement('div'); panel.id = 'geogrid-tools-notes-panel'; panel.className = 'gg-panel';
+            const header = document.createElement('div'); header.className = 'gg-panel-header'; header.innerHTML = `<span>Anotações</span><span class="gg-panel-close">&times;</span>`;
+
+            const content = document.createElement('div'); content.style.cssText = "flex-grow: 1; display: flex; flex-direction: column;";
+            const textarea = document.createElement('textarea'); textarea.className = 'gg-notes-area'; textarea.placeholder = "Digite aqui...";
+
+            const saved = localStorage.getItem('geogrid_notes_content'); if(saved) textarea.value = saved;
+            textarea.addEventListener('input', () => localStorage.setItem('geogrid_notes_content', textarea.value));
+
+            content.appendChild(textarea); panel.append(header, content); document.body.appendChild(panel);
+            header.querySelector('.gg-panel-close').addEventListener('click', (e) => { e.stopPropagation(); this.toggleNotesPanel(false); document.getElementById('btn-notes').classList.remove('active'); });
+            this.makeDraggable(panel, header); this.makeResizable(panel);
+        },
+
+        createSettingsPanel: function() {
+            if (document.getElementById('geogrid-tools-settings-panel')) return;
+            const panel = document.createElement('div'); panel.id = 'geogrid-tools-settings-panel'; panel.className = 'gg-panel';
+            const header = document.createElement('div'); header.className = 'gg-panel-header'; header.innerHTML = `<span>Configurações</span><span class="gg-panel-close">&times;</span>`;
+
+            const content = document.createElement('div'); content.className = 'gg-panel-content';
+
+            const createToggle = (label, key, def) => {
+                const row = document.createElement('label'); row.className = 'gg-setting-row';
+                const lbl = document.createElement('span'); lbl.className = 'gg-setting-label'; lbl.textContent = label;
+                const inp = document.createElement('input'); inp.type = 'checkbox'; inp.className = 'gg-toggle-switch';
+                inp.checked = (window.__hudState__ && window.__hudState__.hasOwnProperty(key)) ? window.__hudState__[key] : def;
+                inp.addEventListener('change', () => {
+                    if(window.__hudState__) { window.__hudState__[key] = inp.checked; if(key === 'modoClaro') this.applyTheme(); saveSettings(); }
+                });
+                row.append(lbl, inp); return row;
+            };
+
+            const sec1 = document.createElement('div'); sec1.className = 'gg-settings-group-title'; sec1.textContent = 'Interface';
+            content.append(sec1,
+                createToggle("Modo Claro", "modoClaro", false),
+                createToggle("Informações no GeoGrid", "exibirInfoDiagrama", false),
+                createToggle("Ocultar Topo/Rodapé", "removerIndesejado", true),
+                createToggle("Limitar Tamanho Vertical (Auto)", "limitarAlturaPainel", true),
+                createToggle("Exibir Nome do Cliente", "exibirNomeCliente", true),
+                createToggle("Destacar Redes Divergentes", "destacarRedesDivergentes", true)
             );
 
-            // 7. Adiciona a lógica de toggle aos botões
-            newPanel.querySelectorAll('.hud-toggle-btn').forEach(btn => {
-                btn.addEventListener('click', () => {
-                    btn.classList.toggle('active');
+            const sec2 = document.createElement('div'); sec2.className = 'gg-settings-group-title'; sec2.textContent = 'Área de Transferência';
+            content.append(sec2,
+                createToggle("Incluir Nome da Rede", "copiarNomeRede", false),
+                createToggle("Incluir Status", "copiarStatus", true),
+                createToggle("Apenas Cancelados", "somenteCancelados", true)
+            );
+
+            const sec3 = document.createElement('div'); sec3.className = 'gg-settings-group-title'; sec3.textContent = 'Localização';
+            content.append(sec3,
+                createToggle("Copiar Coordenadas (vs Link)", "copiarCoordenadas", false),
+                createToggle("Abrir em Nova Guia", "abrirNovaGuia", false)
+            );
+
+            panel.append(header, content); document.body.appendChild(panel);
+            header.querySelector('.gg-panel-close').addEventListener('click', (e) => { e.stopPropagation(); this.toggleSettingsPanel(false); document.getElementById('btn-settings').classList.remove('active'); });
+            this.makeDraggable(panel, header); this.makeResizable(panel);
+        },
+
+        resetPanelState: function() {
+            this.isManuallyResized = false; // Destrava o redimensionamento
+            this.currentBox.title = "Carregando...";
+            this.currentBox.data = [];
+            this.setLoadingState();
+
+            // Se o painel estiver aberto, força um ajuste imediato para o tamanho mínimo
+            const panel = document.getElementById(this.config.mainPanelId);
+            if (panel && panel.style.display === 'flex') {
+                panel.style.height = 'auto'; // Reseta altura visual
+            }
+        },
+
+        adjustPanelHeight: function() {
+            const panel = document.getElementById(this.config.mainPanelId);
+
+            // Regra: Só redimensiona se o painel existir, estiver visível E o usuário não tiver mexido manualmente
+            if (!panel || panel.style.display === 'none' || this.isManuallyResized) return;
+
+            const contentDiv = panel.querySelector('.gg-panel-content');
+            const header = panel.querySelector('.gg-panel-header');
+            if (!contentDiv || !header) return;
+
+            const limitHeight = window.__hudState__.limitarAlturaPainel;
+
+            // 1. Reseta a altura para 'auto' para o navegador calcular o scrollHeight real do conteúdo
+            // Importante: salvamos a largura para evitar flickers visuais estranhos
+            const currentWidth = panel.style.width;
+            panel.style.height = 'auto';
+            panel.style.width = currentWidth;
+
+            // 2. Calcula altura necessária
+            const headerHeight = header.offsetHeight;
+            const contentHeight = contentDiv.scrollHeight;
+            const paddingBuffer = 24; // Um pouco mais de respiro
+
+            const desiredHeight = headerHeight + contentHeight + paddingBuffer;
+
+            // 3. Aplica limites (Mínimo 470px solicitado)
+            const minHeight = 470;
+            const maxHeight = limitHeight ? 560 : (window.innerHeight - 50);
+
+            // Lógica: Pega o maior entre (Desejado e Mínimo), mas trava no Máximo
+            const finalHeight = Math.min(Math.max(desiredHeight, minHeight), maxHeight);
+
+            panel.style.height = finalHeight + 'px';
+        },
+
+        // --- LOCATION & CAPTURE LOGIC ---
+        handleLocationAction: function() {
+            // Verifica se a caixa está aberta
+            const caixaAbertaEl = document.querySelector('.padrao-painel-flutuante.painel-modulo-container-diagramas.ui-draggable');
+
+            if (caixaAbertaEl && caixaAbertaEl.style.display !== 'none') {
+                // MODO 1: Caixa Aberta -> Usa a variável global 'localizacao' (Lógica Antiga)
+                if (localizacao && localizacao.length === 2) {
+                    this.processCoordinates(localizacao[0], localizacao[1], "Localização da caixa copiada!");
+                } else {
+                    // Fallback visual se não tiver capturado ainda
+                    this.showToastGeneric("Erro: Passe o mouse sobre a caixa para capturar as coordenadas.", "#ff7675");
+                }
+            } else {
+                // MODO 2: Nenhuma caixa -> Alternar Modo de Captura
+                this.toggleMapCapture();
+            }
+        },
+
+        // --- Variáveis para o Escudo ---
+        toggleMapCapture: function() {
+            const gw = unsafeWindow;
+            const mapInstance = gw.__googleMapInstancia__;
+            const btn = document.getElementById('btn-location');
+
+            if (!mapInstance) {
+                // Tenta recuperar se o mapa foi carregado tardiamente
+                if (gw.map && gw.map instanceof gw.google.maps.Map) {
+                    gw.__googleMapInstancia__ = gw.map;
+                    this.toggleMapCapture();
+                    return;
+                }
+                this.showToastGeneric("Mapa não detectado. Tente mover o mapa.", "#ff7675");
+                return;
+            }
+
+            if (this.isCapturing) {
+                // --- DESATIVAR ---
+                this.isCapturing = false;
+                btn.classList.remove('capturing', 'active');
+
+                // Remove o Escudo
+                if (this.captureShield) {
+                    this.captureShield.setMap(null);
+                    this.captureShield = null;
+                }
+                if (this.shieldUpdater) {
+                    gw.google.maps.event.removeListener(this.shieldUpdater);
+                    this.shieldUpdater = null;
+                }
+
+                console.log("[GeoGrid Tools] Modo de captura desativado.");
+
+            } else {
+                // --- ATIVAR ---
+                this.isCapturing = true;
+                btn.classList.add('capturing', 'active');
+                this.showToastGeneric("Clique no mapa para capturar...", "#0984e3");
+
+                // Cria o Escudo de Vidro (Rectangle)
+                // Cobre a visão atual do mapa para interceptar cliques
+                const bounds = mapInstance.getBounds();
+
+                this.captureShield = new gw.google.maps.Rectangle({
+                    bounds: bounds,
+                    map: mapInstance,
+                    fillColor: '#ffffff',
+                    fillOpacity: 0,       // Invisível
+                    strokeOpacity: 0,     // Invisível
+                    zIndex: 2147483647,   // Máximo possível (acima dos postes)
+                    clickable: true,
+                    cursor: 'crosshair'   // Mira
+                });
+
+                // Atualiza o escudo se o usuário arrastar o mapa
+                this.shieldUpdater = gw.google.maps.event.addListener(mapInstance, 'bounds_changed', () => {
+                    if (this.captureShield) {
+                        this.captureShield.setBounds(mapInstance.getBounds());
+                    }
+                });
+
+                // O clique acontece no escudo, não no poste
+                gw.google.maps.event.addListener(this.captureShield, 'click', (event) => {
+                    const lat = event.latLng.lat();
+                    const lng = event.latLng.lng();
+
+                    this.processCoordinates(lat, lng, "Coordenadas capturadas!");
+                    this.toggleMapCapture(); // Sai automaticamente
+                });
+            }
+        },
+
+        processCoordinates: function(lat, lng, msg) {
+            const settings = window.__hudState__;
+            let text = "";
+
+            if (settings.copiarCoordenadas) {
+                text = `${lat}, ${lng}`;
+            } else {
+                // Link padrão Google Maps
+                text = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+            }
+
+            if (settings.abrirNovaGuia && !settings.copiarCoordenadas) {
+                window.open(text, '_blank');
+            } else {
+                this.copyTextSimple(text, msg);
+            }
+        },
+
+        copyTextSimple: function(text, msg) {
+            const textArea = document.createElement("textarea");
+            textArea.value = text;
+            textArea.style.position = "fixed";
+            textArea.style.left = "-9999px";
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+
+            try {
+                document.execCommand('copy');
+                this.showToastGeneric(msg);
+            } catch (err) {
+                console.error(err);
+            }
+            document.body.removeChild(textArea);
+        },
+
+        showToastGeneric: function(msg, color = 'var(--gg-accent)') {
+            let toast = document.getElementById('gg-quick-toast');
+            if (!toast) {
+                toast = document.createElement('div');
+                toast.id = 'gg-quick-toast';
+                toast.style.cssText = "position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%); color: white; padding: 8px 16px; border-radius: 20px; font-size: 12px; font-weight: bold; z-index: 10000; box-shadow: 0 2px 10px rgba(0,0,0,0.3); transition: opacity 0.3s; pointer-events: none;";
+                document.body.appendChild(toast);
+            }
+            toast.textContent = msg;
+            toast.style.background = color;
+            toast.style.opacity = '1';
+            setTimeout(() => { toast.style.opacity = '0'; }, 2500);
+        },
+
+        // --- TOGGLES ---
+        toggleMainPanel: function(force) {
+            this.createMainPanel();
+            const panel = document.getElementById(this.config.mainPanelId);
+            const show = (typeof force !== 'undefined') ? force : (panel.style.display !== 'flex');
+
+            if (show) {
+                panel.style.display = 'flex';
+                this.calculateSmartPosition(panel);
+
+                // CORREÇÃO: Força a renderização dos dados que já estão em memória
+                // Garante que se a caixa foi aberta antes do painel, os dados apareçam agora.
+                this.renderClientList();
+
+                // Força o recálculo da altura após a renderização
+                requestAnimationFrame(() => {
+                    this.adjustPanelHeight();
+                });
+
+                panel.style.zIndex = ++this.zIndexCounter;
+                document.getElementById('btn-clients').classList.add('active');
+            } else {
+                panel.style.display = 'none';
+                document.getElementById('btn-clients').classList.remove('active');
+            }
+        },
+        toggleNotesPanel: function(force) { this.createNotesPanel(); this.toggleGeneric('geogrid-tools-notes-panel', force); },
+        toggleSettingsPanel: function(force) { this.createSettingsPanel(); this.toggleGeneric('geogrid-tools-settings-panel', force); },
+
+        toggleGeneric: function(id, force) {
+            const el = document.getElementById(id); const show = (typeof force !== 'undefined') ? force : (el.style.display !== 'flex');
+            el.style.display = show ? 'flex' : 'none'; if(show) { this.calculateSmartPosition(el); el.style.zIndex = ++this.zIndexCounter; }
+        },
+
+        toggleVisibility: function() {
+            const sb = document.getElementById(this.config.sidebarId);
+            sb.style.display = (sb.style.display === 'flex') ? 'none' : 'flex';
+        },
+
+        // --- SIGNAL CHECKER LOGIC (Updated for Divergence Feedback) ---
+        verifySignal: async function(targetEquipId, isBatchMode, btnElement) {
+            // 1. Verifica Cancelamento
+            if (sinalSearchController) {
+                sinalSearchController.abort();
+                sinalSearchController = null;
+                this.showToastGeneric("Parando...", "#ff7675");
+                return;
+            }
+
+            // 2. Coleta clientes
+            const clientsToCheck = [];
+            const equipIdsToCheck = isBatchMode ? equipamentosOrdem : [targetEquipId];
+
+            equipIdsToCheck.forEach(eqId => {
+                const equip = equipamentosInfo[eqId];
+                if (!equip || !equip.clientes) return;
+
+                equip.clientes.forEach(item => {
+                    if (!item.id || !infoClientes[item.id]) return;
+
+                    const dados = infoClientes[item.id].data;
+                    const nomeFull = dados.registro?.nome || "";
+
+                    // Regra: Apenas ATIVOS
+                    if (!nomeFull.includes("ATIVO")) return;
+
+                    const redeClienteRaw = dados.rede?.rede || "";
+                    const redeClienteLimpa = this.normalizeNetworkName(redeClienteRaw.replace(/Card \d+ Porta \d+$/i, ""));
+                    const redeEquipLimpa = this.normalizeNetworkName(equip.nomeRede);
+
+                    // Verificação de Divergência
+                    if (eqId !== '__porDemanda__' && redeClienteLimpa && !redeClienteLimpa.includes(redeEquipLimpa)) {
+                        // ATUALIZAÇÃO: Mostra mensagem de erro visual ao invés de ignorar
+                        this.updateClientSignalUI(item.id, "Rede Divergente", "#ff7675", "bold");
+                        return; // Não adiciona na fila de fetch
+                    }
+
+                    clientsToCheck.push({
+                        id: item.id,
+                        contrato: item.id,
+                        nomeOriginal: nomeFull
+                    });
                 });
             });
 
-            // --- LÓGICA DE AUTOCOMPLETE ---
-            const redeInputGroup = newPanel.querySelector('.hud-input-group');
-            const redeInput = newPanel.querySelector('#hud-cadastro-rede');
-            const suggestionsBox = document.createElement('div');
-            suggestionsBox.className = 'hud-autocomplete-suggestions';
-            redeInputGroup.appendChild(suggestionsBox);
+            if (clientsToCheck.length === 0) {
+                this.showToastGeneric("Nenhum cliente apto.", "#b2bec3");
+                return;
+            }
 
+            // 3. Prepara UI e Controle
+            sinalSearchController = new AbortController();
+            const signal = sinalSearchController.signal;
+
+            if(btnElement) {
+                if(!btnElement.dataset.originalHtml) btnElement.dataset.originalHtml = btnElement.innerHTML;
+                // Ícone de Stop
+                btnElement.innerHTML = '<svg viewBox="0 0 24 24"><path d="M6 6h12v12H6z"/></svg>';
+                btnElement.classList.add('active');
+                btnElement.style.color = "#ff7675";
+            }
+
+            const total = clientsToCheck.length;
+            let completed = 0;
+            this.showToastGeneric(`Iniciando ${total} verificações...`, "#0984e3");
+
+            // 4. Executor de Tarefa (Wrapper)
+            const runTask = async (client) => {
+                if (signal.aborted) return;
+
+                this.updateClientSignalUI(client.id, "...", "#74b9ff", "bold");
+
+                try {
+                    const result = await this.fetchSignal(client, signal);
+                    if (signal.aborted) return;
+
+                    let color = "#b2bec3";
+                    let text = result.sinal;
+                    let weight = "normal";
+
+                    if (text.includes("dBm")) {
+                         const val = parseFloat(text);
+                         if (!isNaN(val)) {
+                             weight = "bold";
+                             if (val < -24.30) color = "#ffeaa7";
+                             else color = "#55efc4";
+                         }
+                    } else {
+                        color = "#ff7675";
+                    }
+
+                    if(!this.currentBox.signalCache) this.currentBox.signalCache = {};
+                    this.currentBox.signalCache[client.id] = { text, color };
+
+                    this.updateClientSignalUI(client.id, text, color, weight);
+
+                } catch (err) {
+                    if (!signal.aborted) this.updateClientSignalUI(client.id, "Erro", "#ff7675");
+                } finally {
+                    completed++;
+                }
+            };
+
+            // 5. Gerenciador de Concorrência
+            const CONCURRENCY = 6;
+            const queue = [...clientsToCheck];
+            const activeWorkers = [];
+
+            const next = () => {
+                if (queue.length === 0 || signal.aborted) return Promise.resolve();
+                const client = queue.shift();
+                return runTask(client).then(() => next());
+            };
+
+            for (let i = 0; i < CONCURRENCY; i++) {
+                activeWorkers.push(next());
+            }
+
+            await Promise.all(activeWorkers);
+
+            // 6. Finalização
+            sinalSearchController = null;
+            if(btnElement) {
+                if(btnElement.dataset.originalHtml) btnElement.innerHTML = btnElement.dataset.originalHtml;
+                btnElement.classList.remove('active');
+                btnElement.style.color = "";
+            }
+
+            if(!signal.aborted) this.showToastGeneric(`Concluído: ${completed}/${total}`, "#00b894");
+        },
+
+        fetchSignal: async function(client, signal) {
+            // Lógica portada do script antigo (v4.6)
+            // 1. Busca na lista geral para pegar ID da ONU
+            const parts = client.nomeOriginal.split(' - ');
+            let contrato = client.id;
+            let nomeBusca = "";
+
+            if (parts.length >= 3) {
+                contrato = parts[1].trim();
+                nomeBusca = parts.slice(2).join(' - ').replace(/\(ATIVO\)/, "").trim();
+            }
+
+            // Clean text helper
+            const clean = (t) => t ? t.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim() : "";
+            const targetName = clean(nomeBusca);
+            const searchTerms = targetName.split(" ").slice(0, 2);
+
+            // Fetch 1: Search Panel
+            const searchUrl = `${JUPITER_API_SEARCH}?adm=gerenciarusuarios&np=5&p=1&t=&valorbusca=${contrato}&tipo=2`;
+
+            const searchResp = await new Promise((resolve, reject) => {
+                GM_xmlhttpRequest({
+                    method: "GET", url: searchUrl, timeout: 20000,
+                    onload: resolve, onerror: reject, ontimeout: reject
+                });
+            });
+
+            if(signal.aborted) throw new Error("Aborted");
+
+            // Parse HTML
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(searchResp.responseText, "text/html");
+            const rows = doc.querySelectorAll('tr[onu]');
+            let onuId = null;
+
+            for (const row of rows) {
+                const rowText = clean(row.textContent);
+                // Validação frouxa: se contém os termos principais
+                if (searchTerms.every(term => rowText.includes(term))) {
+                    onuId = row.getAttribute('onu');
+                    break;
+                }
+            }
+
+            if (!onuId) return { sinal: "Não encontrado / Divergente" };
+
+            // Fetch 2: Dados Técnicos
+            const onusResp = await new Promise((resolve, reject) => {
+                GM_xmlhttpRequest({
+                    method: "GET", url: `${JUPITER_API_ONUS}?id=${onuId}`, timeout: 15000,
+                    onload: resolve, onerror: reject
+                });
+            });
+
+            const jsonOnus = JSON.parse(onusResp.responseText);
+            if (!jsonOnus.onus || jsonOnus.onus.length === 0) return { sinal: "Sem dados ONU" };
+
+            const dadosOnus = jsonOnus.onus[0];
+
+            // Fetch 3: Sinal
+            const params = new URLSearchParams();
+            for (const key in dadosOnus) params.append(key, dadosOnus[key]);
+            if(!params.has('id')) params.append('id', onuId);
+
+            const signalResp = await new Promise((resolve, reject) => {
+                GM_xmlhttpRequest({
+                    method: "GET", url: `${JUPITER_API_SIGNAL}?${params.toString()}`, timeout: 45000,
+                    onload: resolve, onerror: reject
+                });
+            });
+
+            const jsonSignal = JSON.parse(signalResp.responseText);
+            return { sinal: jsonSignal.sinal || "Sem Leitura" };
+        },
+
+        updateClientSignalUI: function(clientId, text, color) {
+            // Atualiza o DOM diretamente para performance
+            // Procura o elemento de subtexto do cliente
+            // Como não temos IDs nos elementos DOM, buscamos pelo contexto
+            // Hack: Vamos adicionar um data-id na renderização para facilitar
+            const row = document.querySelector(`.gg-client-row[data-client-id="${clientId}"]`);
+            if (row) {
+                const subTextEl = row.querySelector('.gg-client-subtext');
+                if (subTextEl) {
+                    subTextEl.textContent = text;
+                    subTextEl.style.color = color;
+                    subTextEl.style.fontWeight = "bold";
+                }
+            }
+        },
+
+        createEquipmentPanel: function() {
+            if (document.getElementById('gg-equipment-panel')) return;
+
+            const panel = document.createElement('div');
+            panel.id = 'gg-equipment-panel';
+            panel.className = 'gg-panel';
+            panel.style.width = '600px';
+            panel.style.height = 'auto';
+            panel.style.display = 'flex';
+
+            const header = document.createElement('div');
+            header.className = 'gg-panel-header';
+            header.innerHTML = `<span>Cadastro Rápido</span><span class="gg-panel-close">×</span>`;
+
+            const content = document.createElement('div');
+            content.className = 'gg-panel-content';
+
+            // --- CONTEÚDO COM ESTRUTURA PARA AUTOCOMPLETE ---
+            content.innerHTML = `
+                <div class="gg-section-title">Geral</div>
+                <div class="gg-btn-group">
+                    <div class="gg-input-group">
+                        <label>Rede:</label>
+                        <input type="text" id="gg-equip-rede" placeholder="Digite para buscar..." autocomplete="off">
+                        <div id="gg-rede-suggestions" class="gg-autocomplete-suggestions"></div>
+                    </div>
+                    <button class="gg-toggle-btn" data-type="ponte">Ponte</button>
+                    <button class="gg-toggle-btn" data-type="rede_1x2">1x2 Rede</button>
+                </div>
+
+                <div class="gg-section-title">Splitter 1x2</div>
+                <div class="gg-btn-group">
+                    <button class="gg-toggle-btn" data-type="1x2_5/95">5/95</button>
+                    <button class="gg-toggle-btn" data-type="1x2_10/90">10/90</button>
+                    <button class="gg-toggle-btn" data-type="1x2_15/85">15/85</button>
+                    <button class="gg-toggle-btn" data-type="1x2_20/80">20/80</button>
+                    <button class="gg-toggle-btn" data-type="1x2_30/70">30/70</button>
+                    <button class="gg-toggle-btn" data-type="1x2_50/50">50/50</button>
+                </div>
+
+                <div class="gg-section-title">Splitter 1x8</div>
+                <div class="gg-btn-group">
+                    <button class="gg-toggle-btn" data-type="1x8_cliente">Cliente</button>
+                    <button class="gg-toggle-btn" data-type="1x8_expansao">Expansão</button>
+                </div>
+
+                <div class="gg-footer-actions">
+                    <button class="gg-action-btn danger" id="gg-btn-cancel">Cancelar</button>
+                    <button class="gg-action-btn" id="gg-btn-default">Tela Padrão</button>
+                    <button class="gg-action-btn primary" id="gg-btn-confirm">Confirmar</button>
+                </div>
+            `;
+
+            panel.appendChild(header);
+            panel.appendChild(content);
+            document.body.appendChild(panel);
+
+            // Posiciona no centro
+            panel.style.left = (window.innerWidth - 600) / 2 + 'px';
+            panel.style.top = '150px';
+
+            this.makeDraggable(panel, header);
+
+            // --- REFERÊNCIAS ---
+            const inputRede = content.querySelector('#gg-equip-rede');
+            const suggestionsBox = content.querySelector('#gg-rede-suggestions');
+
+            // --- EVENTOS GERAIS ---
+            header.querySelector('.gg-panel-close').onclick = () => panel.remove();
+            content.querySelector('#gg-btn-cancel').onclick = () => panel.remove();
+
+            const toggles = content.querySelectorAll('.gg-toggle-btn');
+            toggles.forEach(btn => {
+                btn.onclick = () => btn.classList.toggle('active');
+            });
+
+            content.querySelector('#gg-btn-default').onclick = () => {
+                window.__hudFallbackActive__ = true;
+                panel.remove();
+                const gw = (typeof unsafeWindow !== 'undefined' ? unsafeWindow : window);
+                if (gw.jQuery) {
+                    gw.jQuery('.adicionar-equipamento-recipiente').click();
+                }
+
+                // Segurança: Se por algum motivo o clique falhar, remove a flag após 1s
+                setTimeout(() => { window.__hudFallbackActive__ = false; }, 1000);
+            };
+
+            // --- LÓGICA DE AUTOCOMPLETE (COM DEBOUNCE) ---
             const handleRedeSearch = () => {
-                const searchTerm = redeInput.value.trim();
-                redeInput.dataset.redeId = ''; // Limpa o ID
+                const term = inputRede.value.trim();
 
-                if (searchTerm.length < 3) {
+                // Limpa ID se o usuário mudou o texto
+                if (inputRede.dataset.lastTerm !== term) {
+                    inputRede.dataset.redeId = "";
+                }
+
+                if (term.length < 3) {
                     suggestionsBox.style.display = 'none';
                     return;
                 }
 
-                suggestionsBox.innerHTML = '<div class="hud-suggestion-item loading">Buscando redes...</div>';
                 suggestionsBox.style.display = 'block';
+                suggestionsBox.innerHTML = '<div class="gg-suggestion-item loading">Buscando...</div>';
 
+                // Chama a API do Jupiter
                 GM_xmlhttpRequest({
                     method: "GET",
-                    url: `https://api.jupiter.com.br/view/Redes/retornarRedesFibra?rede=${encodeURIComponent(searchTerm)}`,
-                    onload: function(response) {
+                    url: `https://api.jupiter.com.br/view/Redes/retornarRedesFibra?rede=${encodeURIComponent(term)}`,
+                    onload: (res) => {
                         try {
-                            const data = JSON.parse(response.responseText);
-                            if (data.success === "1" && data.redes && data.redes.length > 0) {
-                                suggestionsBox.innerHTML = '';
+                            const json = JSON.parse(res.responseText);
+                            suggestionsBox.innerHTML = '';
 
-                                data.redes.forEach(rede => {
-                                    const itemDiv = document.createElement('div');
-                                    itemDiv.className = 'hud-suggestion-item';
-                                    const formattedText = `${rede.id} - ${rede.descricao}`;
-                                    itemDiv.textContent = formattedText;
-
-                                    itemDiv.addEventListener('click', () => {
-                                        redeInput.value = formattedText;
-                                        redeInput.dataset.redeId = rede.id;
+                            if (json.redes && json.redes.length > 0) {
+                                json.redes.forEach(rede => {
+                                    const div = document.createElement('div');
+                                    div.className = 'gg-suggestion-item';
+                                    div.textContent = `${rede.id} - ${rede.descricao}`;
+                                    div.onclick = () => {
+                                        inputRede.value = `${rede.id} - ${rede.descricao}`;
+                                        inputRede.dataset.redeId = rede.id; // SALVA O ID
+                                        inputRede.dataset.lastTerm = inputRede.value;
                                         suggestionsBox.style.display = 'none';
-                                    });
-                                    suggestionsBox.appendChild(itemDiv);
+                                    };
+                                    suggestionsBox.appendChild(div);
                                 });
-
                             } else {
-                                suggestionsBox.innerHTML = '<div class="hud-suggestion-item loading">Nenhuma rede encontrada.</div>';
+                                suggestionsBox.innerHTML = '<div class="gg-suggestion-item loading">Nenhuma rede encontrada</div>';
                             }
                         } catch (e) {
-                            console.error("[HUD Script] Erro ao parsear JSON da API de Redes:", e);
-                            suggestionsBox.innerHTML = '<div class="hud-suggestion-item loading">Erro ao carregar redes.</div>';
+                            suggestionsBox.innerHTML = '<div class="gg-suggestion-item loading">Erro na API</div>';
                         }
                     },
-                    onerror: function(error) {
-                        console.error("[HUD Script] Erro de rede na API de Redes:", error);
-                        suggestionsBox.innerHTML = '<div class="hud-suggestion-item loading">Erro de rede.</div>';
+                    onerror: () => {
+                        suggestionsBox.innerHTML = '<div class="gg-suggestion-item loading">Erro de conexão</div>';
                     }
                 });
             };
-            const debouncedRedeSearch = debounce(handleRedeSearch, 300);
-            redeInput.addEventListener('keyup', debouncedRedeSearch);
-            newPanel.addEventListener('click', (e) => {
-                if (!redeInputGroup.contains(e.target)) {
+
+            // Aplica o Debounce (espera 400ms após parar de digitar)
+            const debouncedRedeSearch = debounce(handleRedeSearch, 400);
+            inputRede.addEventListener('input', debouncedRedeSearch);
+
+            // Fecha sugestões ao clicar fora
+            document.addEventListener('click', (e) => {
+                if (!inputRede.contains(e.target) && !suggestionsBox.contains(e.target)) {
                     suggestionsBox.style.display = 'none';
                 }
             });
-            // --- FIM DO AUTOCOMPLETE ---
-
-            // 8. Adiciona lógica ao botão 'Cancelar'
-            newPanel.querySelector('#hud-cadastro-cancelar').addEventListener('click', () => {
-                newPanel.remove();
-                state.cadastroEquipamentoAtivo = false;
-            });
-
-            // 9. Adiciona lógica ao botão 'Tela Padrão' (Fallback)
-            newPanel.querySelector('#hud-cadastro-padrao').addEventListener('click', () => {
-                console.log('[HUD Script] "Tela Padrão" clicado. Acionando fallback.');
-                state.cadastroEquipamentoFallback = true;
-                newPanel.remove();
-                state.cadastroEquipamentoAtivo = false;
-                addButton.click();
-            });
-
-            // --- (INÍCIO DA LÓGICA DO 'CONFIRMAR' REFATORADA) ---
-
-            // (NOVA FUNÇÃO HELPER) Encontra o próximo sufixo (ex: " - B")
-            function findNextSigla(baseSigla, keywords, existingList) {
-                const normalizedKeywords = keywords.map(k => k.toLowerCase());
-
-                // 1. Filtra a lista principal para encontrar APENAS equipamentos do mesmo tipo
-                const matchingEquipments = existingList.filter(eq => {
-                    const normalizedSigla = eq.sigla.toLowerCase();
-                    // Verifica se a sigla contém QUALQUER uma das keywords
-                    // ex: keywords ['cliente', 'cl.']
-                    return normalizedKeywords.some(keyword => normalizedSigla.includes(keyword));
-                });
-
-                const suffixes = ["", " - A", " - B", " - C", " - D"];
-                const usedSuffixes = new Set();
-
-                // 2. Verifica quais sufixos já estão em uso
-                for (const eq of matchingEquipments) {
-                    const normalizedSigla = eq.sigla.toUpperCase();
-                    // Itera de trás para frente (de " - D" para " - A")
-                    for (let i = suffixes.length - 1; i > 0; i--) {
-                        const suffix = suffixes[i].toUpperCase();
-                        if (normalizedSigla.endsWith(suffix)) {
-                            usedSuffixes.add(suffix);
-                            break; // Encontrou o sufixo, vai para o próximo equipamento
-                        }
-                    }
-                }
-
-                // 3. Encontra o primeiro sufixo vago
-                // Começa verificando a base (sem sufixo)
-                const baseSiglaExists = matchingEquipments.some(eq =>
-                    !eq.sigla.toUpperCase().includes(" - A") &&
-                    !eq.sigla.toUpperCase().includes(" - B") &&
-                    !eq.sigla.toUpperCase().includes(" - C") &&
-                    !eq.sigla.toUpperCase().includes(" - D")
-                );
-
-                if (!baseSiglaExists) {
-                    return baseSigla; // Slot base ("") está vago
-                }
-
-                // Se a base está ocupada, procura por A, B, C, D
-                for (let i = 1; i < suffixes.length; i++) {
-                    const suffix = suffixes[i].toUpperCase();
-                    if (!usedSuffixes.has(suffix)) {
-                        return baseSigla + suffixes[i]; // ex: "spl cl. 0000 - A"
-                    }
-                }
-
-                return null; // Limite (A, B, C, D) atingido
-            }
 
 
+            // --- LÓGICA DO BOTÃO CONFIRMAR ---
+            content.querySelector('#gg-btn-confirm').onclick = async (e) => {
+                const btn = e.target;
+                const originalText = btn.textContent;
 
-            // 10. (REFATORADO) Lógica do botão 'Confirmar'
-            newPanel.querySelector('#hud-cadastro-confirmar').addEventListener('click', async () => {
-                const btnConfirmar = newPanel.querySelector('#hud-cadastro-confirmar');
-                const btnCancelar = newPanel.querySelector('#hud-cadastro-cancelar');
-                const btnPadrao = newPanel.querySelector('#hud-cadastro-padrao');
+                const nomeRedeVisual = inputRede.value.trim();
+                const idRedeSelecionada = inputRede.dataset.redeId || "";
 
-                const botoesAtivosNodeList = newPanel.querySelectorAll('.hud-toggle-btn.active');
-                const botoesAtivos = Array.from(botoesAtivosNodeList);
+                const ativos = Array.from(content.querySelectorAll('.gg-toggle-btn.active'));
 
-                const nomeRedeInput = newPanel.querySelector('#hud-cadastro-rede');
-                const nome_rede_valor = nomeRedeInput.value.trim();
-                const rede_id_valor = nomeRedeInput.dataset.redeId || '';
-
-                const siglasEquipamentosCriados = []; // Para splitters
-                let siglaPonteCriada = null; // Para a ponte
-
-                // --- Verificações Iniciais ---
-                if (botoesAtivos.length === 0) {
-                    showHudToast('Nenhum equipamento selecionado.');
+                if (ativos.length === 0) {
+                    this.showToastGeneric("Selecione ao menos um equipamento.", "#ff7675");
                     return;
                 }
                 if (!ultimoCodigoEquipamentoPai) {
-                    showHudToast('Erro: Código do equipamento pai (ex: TA...) não foi capturado.');
+                    this.showToastGeneric("Erro: Equipamento Pai não detectado.", "#ff7675");
                     return;
                 }
-                if (!ultimoCodigoPoste) {
-                    showHudToast('Erro: Código numérico do poste (ex: 55325) não foi capturado.');
-                    return;
-                }
-
-                // --- Validação de Rede Robusta ---
-                const tiposSelecionados = botoesAtivos.map(btn => btn.dataset.value);
-                const isCriandoSplCliente = tiposSelecionados.includes('1x8_cliente');
-                const isCriandoExpansao = tiposSelecionados.includes('1x8_expansao'); // Corrigido
-                const isCriandoRede1x2 = tiposSelecionados.includes('rede_1x2');
-
-                if (isCriandoSplCliente && !rede_id_valor) {
-                    showHudToast('Para "Cliente", você DEVE pesquisar e selecionar uma rede da lista.');
-                    return;
-                }
-                if ((isCriandoExpansao || isCriandoRede1x2) && !nome_rede_valor) {
-                    showHudToast('O campo "Rede" é obrigatório para Expansão ou 1x2 Rede.');
+                if (!window.ultimoCodigoPoste) {
+                    this.showToastGeneric("Erro: Código do Poste não capturado. Passe o mouse no poste.", "#ff7675");
                     return;
                 }
 
-                // Bloqueia botões
-                btnConfirmar.disabled = true;
-                btnCancelar.disabled = true;
-                btnPadrao.disabled = true;
+                // Validações de Rede
+                const tipos = ativos.map(b => b.dataset.type);
+                if ((tipos.includes('1x8_expansao') || tipos.includes('rede_1x2')) && !nomeRedeVisual) {
+                    this.showToastGeneric("Nome da Rede obrigatório para Expansão/1x2.", "#ff7675");
+                    return;
+                }
+                if (tipos.includes('1x8_cliente') && !idRedeSelecionada) {
+                    this.showToastGeneric("Para Splitter Cliente, selecione uma rede da lista.", "#ff7675");
+                    return;
+                }
 
                 try {
-                    // --- ETAPA 1: VERIFICAR EQUIPAMENTOS EXISTENTES ---
-                    btnConfirmar.textContent = '1/5 Verificando...';
-                    console.log(`[HUD Script] Iniciando Etapa 1: Verificando equipamentos existentes...`);
+                    btn.disabled = true;
+                    btn.textContent = "Verificando...";
 
-                    const payloadVerificar = new URLSearchParams();
-                    payloadVerificar.append('controlador', 'diagrama');
-                    payloadVerificar.append('metodo', 'carregarCabosEquipamentos');
-                    payloadVerificar.append('codigo', ultimoCodigoEquipamentoPai);
-                    payloadVerificar.append('idRazaoSocial', '46');
+                    // 1. Carrega dados atuais do diagrama (para checar duplicidade de nomes)
+                    const checkParams = new URLSearchParams();
+                    checkParams.append('controlador', 'diagrama');
+                    checkParams.append('metodo', 'carregarCabosEquipamentos');
+                    checkParams.append('codigo', ultimoCodigoEquipamentoPai);
+                    checkParams.append('idRazaoSocial', '46');
 
-                    const resultadoVerificar = await fazerRequisicaoDaPagina(
-                        "http://172.16.6.57/geogrid/aconcagua/php/diagramaJson/api.php",
-                        payloadVerificar.toString(),
-                        "Verificar Equipamentos"
+                    const checkResp = await fazerRequisicaoDaPagina(
+                        "php/diagramaJson/api.php",
+                        checkParams.toString(),
+                        "Check Inicial"
                     );
 
-                    const dataVerificar = JSON.parse(resultadoVerificar.response);
-                    const existingEquipments = dataVerificar.equipamentos || [];
-                    const existingCabos = dataVerificar.cabosJson || [];
+                    const checkData = JSON.parse(checkResp.response);
+                    const existingEquips = checkData.equipamentos || [];
+                    const existingCables = checkData.cabosJson || []; // Pontes aparecem aqui
+                    const codigoPoste = window.ultimoCodigoPoste;
 
-                    console.log(`[HUD Script] Verificação concluída. Encontrados ${existingEquipments.length} equipamentos e ${existingCabos.length} cabos.`);
+                    const payloads = [];
 
-                    // --- ETAPA 2: CONSTRUIR PAYLOADS E VALIDAR ---
-                    btnConfirmar.textContent = '2/5 Preparando...';
-                    const payloadsParaSalvar = [];
-                    const isCriandoPonte = tiposSelecionados.includes('ponte');
+                    // =================================================================================
+                    // LÓGICA DA PONTE (CABO DE LIGAÇÃO)
+                    // =================================================================================
+                    if (tipos.includes('ponte')) {
+                        btn.textContent = "Validando Ponte...";
 
-                    // --- 2A. Lógica da Ponte ---
-                    if (isCriandoPonte) {
-                        console.log(`[HUD Script] Validando Ponte...`);
-
-                        const ponteExistente = existingCabos.some(c => c.sigla && c.sigla.toLowerCase().includes('ponte'));
-                        if (ponteExistente) {
-                            showHudToast("Já existe uma ponte neste poste. Crie da forma antiga.");
-                            throw new Error("Já existe uma ponte.");
+                        // 1. Verifica se já existe
+                        if (existingCables.some(c => c.sigla && c.sigla.toLowerCase().includes('ponte'))) {
+                            throw new Error("Já existe uma ponte neste poste.");
                         }
 
-                        const payloadValidacao = new URLSearchParams();
-                        payloadValidacao.append('idRazaoSocial', '46');
-                        payloadValidacao.append('poste', `PT${ultimoCodigoPoste}`);
+                        // 2. Busca acessórios do poste (CE e TA)
+                        const paramsAcc = new URLSearchParams();
+                        paramsAcc.append('idRazaoSocial', '46');
+                        paramsAcc.append('poste', 'PT' + codigoPoste); // A API exige o prefixo PT
 
-                        const resultadoValidacao = await fazerRequisicaoDaPagina(
-                            "http://172.16.6.57/geogrid/aconcagua/php/acessorios/carregaAcessoriosPoste.php",
-                            payloadValidacao.toString(), "Validação da Ponte"
+                        const respAcc = await fazerRequisicaoDaPagina(
+                            "php/acessorios/carregaAcessoriosPoste.php",
+                            paramsAcc.toString(),
+                            "Busca Acessórios"
                         );
-                        const dataValidacao = JSON.parse(resultadoValidacao.response);
-                        const dados = dataValidacao.dados;
 
-                        const pontaA_CE = dados?.find(d => d.cd.startsWith('CE'));
-                        const pontaB_TA = dados?.find(d => d.cd.startsWith('TA'));
+                        const dataAcc = JSON.parse(respAcc.response);
+                        const listaAcessorios = dataAcc.dados || [];
 
-                        if (dados?.length !== 2 || !pontaA_CE || !pontaB_TA) {
-                            showHudToast('Caixa incompatível pra criação da Ponte, crie da forma antiga');
-                            throw new Error("Validação da Ponte falhou.");
+                        // 3. Tenta encontrar 1 Caixa (CE) e 1 Terminal (TA)
+                        const itemCE = listaAcessorios.find(d => d.cd && d.cd.startsWith('CE'));
+                        const itemTA = listaAcessorios.find(d => d.cd && d.cd.startsWith('TA'));
+
+                        if (!itemCE || !itemTA) {
+                            throw new Error("Para criar Ponte, o poste precisa ter 1 Caixa (CE) e 1 Terminal (TA).");
                         }
 
-                        const siglaPonte = `ponte ${ultimoCodigoPoste}`;
-                        const payloadCriacaoPonte = new URLSearchParams();
-                        payloadCriacaoPonte.append('codigo', siglaPonte);
-                        payloadCriacaoPonte.append('dataDeInstalacao', getTodayDate());
-                        payloadCriacaoPonte.append('tipo_cabo', '12 Fibras AS 120');
-                        payloadCriacaoPonte.append('ponta_a', '0');
-                        payloadCriacaoPonte.append('ponta_b', '1');
-                        payloadCriacaoPonte.append('obs', '');
-                        payloadCriacaoPonte.append('idRazaoSocial', '46');
-                        payloadCriacaoPonte.append('codigoEmpresa', 'JPT');
-                        payloadCriacaoPonte.append('poste', `PT${ultimoCodigoPoste}`);
-                        payloadCriacaoPonte.append('sigla', siglaPonte);
-                        payloadCriacaoPonte.append('pontaA', pontaA_CE.cd);
-                        payloadCriacaoPonte.append('pontaB', pontaB_TA.cd);
+                        // 4. Monta o payload da Ponte (cadastraCaboLigacao.php)
+                        const siglaPonte = `ponte ${codigoPoste}`;
+                        const pPonte = new URLSearchParams();
+                        pPonte.append('idRazaoSocial', '46');
+                        pPonte.append('codigoEmpresa', 'JPT');
+                        pPonte.append('poste', 'PT' + codigoPoste);
+                        pPonte.append('sigla', siglaPonte);
+                        pPonte.append('codigo', siglaPonte); // Sim, envia igual a sigla
+                        pPonte.append('dataDeInstalacao', getTodayDate());
+                        pPonte.append('tipo_cabo', '12 Fibras AS 120'); // Padrão hardcoded do antigo script
+                        pPonte.append('pontaA', itemCE.cd); // ID da Caixa
+                        pPonte.append('pontaB', itemTA.cd); // ID do Terminal
+                        pPonte.append('ponta_a', '0'); // Índices visuais (padrão)
+                        pPonte.append('ponta_b', '1');
+                        pPonte.append('obs', '');
 
-                        payloadsParaSalvar.push({
-                            url: "http://172.16.6.57/geogrid/aconcagua/php/cabos/cadastraCaboLigacao.php",
-                            payload: payloadCriacaoPonte.toString(),
-                            sigla: siglaPonte,
-                            isPonte: true
+                        payloads.push({
+                            url: "php/cabos/cadastraCaboLigacao.php", // URL diferente!
+                            data: pPonte.toString(),
+                            sigla: siglaPonte
                         });
-                        siglaPonteCriada = siglaPonte;
                     }
 
-                    // --- 2B. Lógica dos Splitters ---
-                    const otherEquipments = botoesAtivos.filter(btn => btn.dataset.value !== 'ponte');
+                    // =================================================================================
+                    // LÓGICA DOS SPLITTERS (EQUIPAMENTOS)
+                    // =================================================================================
+                    for (const btnEl of ativos) {
+                        const type = btnEl.dataset.type;
+                        if (type === 'ponte') continue; // Já processado acima
 
-                    for (const btn of otherEquipments) {
-                        const tipo = btn.dataset.value;
-                        const textoBotao = btn.textContent.trim();
-
-                        let id_equipamento = '157';
+                        let id_equip = '157';
                         let baseSigla = '';
                         let extensao = 'true';
-                        let payload_rede_id = '';
-                        let payload_nome_rede = '';
-                        let keywords = [];
+                        let payloadRedeId = "";
+                        let payloadNomeRede = "";
 
-                        if (tipo.startsWith('1x8_')) {
-                            id_equipamento = '159';
-                            if (tipo === '1x8_cliente') {
-                                baseSigla = `spl cl. ${ultimoCodigoPoste}`;
+                        if (type.startsWith('1x8')) {
+                            id_equip = '159';
+                            if (type.includes('cliente')) {
+                                baseSigla = `spl cl. ${codigoPoste}`;
                                 extensao = 'false';
-                                payload_rede_id = rede_id_valor;
-                                payload_nome_rede = nome_rede_valor;
-                                keywords = ['cliente', 'cl.'];
-                            } else { // 1x8_expansao (corrigido)
-                                baseSigla = `spl exp. ${nome_rede_valor.toUpperCase()}`;
-                                keywords = ['expansão', 'expansao', 'exp.'];
-                            }
-                        } else if (tipo.startsWith('1x2_')) {
-                            id_equipamento = '157';
-                            baseSigla = `spl ${textoBotao} ${ultimoCodigoPoste}`;
-                            keywords = [textoBotao]; // ex: "10/90"
-                        } else if (tipo === 'rede_1x2') {
-                            id_equipamento = '157';
-                            baseSigla = `1/2 ${nome_rede_valor.toUpperCase()}`;
-                            keywords = ['1/2'];
-                        }
-
-                        // Encontra o próximo sufixo vago
-                        const siglaFinal = findNextSigla(baseSigla, keywords, existingEquipments);
-
-                        if (!siglaFinal) {
-                            showHudToast(`Limite de 5 (A-D) atingido para ${baseSigla}`);
-                            throw new Error("Limite de equipamento atingido.");
-                        }
-
-                        const payload = new URLSearchParams();
-                        payload.append('codigo', ultimoCodigoEquipamentoPai);
-                        payload.append('idRazaoSocial', '46');
-                        payload.append('ip', '');
-                        payload.append('obs', '');
-                        payload.append('razaoSocial', 'Jupiter Telecomunicações');
-                        payload.append('nomeUsuario', 'jhonvictor');
-                        payload.append('codigoEmpresa', 'JPT');
-                        payload.append('projeto', 'false');
-                        payload.append('id_equipamento', id_equipamento);
-                        payload.append('extensao', extensao);
-                        payload.append('rede', payload_rede_id);
-                        payload.append('nome_rede', payload_nome_rede);
-                        payload.append('sigla', siglaFinal); // Usa a sigla final com sufixo
-
-                        payloadsParaSalvar.push({
-                            url: "http://172.16.6.57/geogrid/aconcagua/php/diagramaJson/salvaEquipamentos.php",
-                            payload: payload.toString(),
-                            sigla: siglaFinal,
-                            isPonte: false
-                        });
-                        siglasEquipamentosCriados.push(siglaFinal);
-                    }
-
-                    // --- ETAPA 3: Loop SEQUENCIAL para salvar ---
-                    btnConfirmar.textContent = '3/5 Salvando...';
-                    console.log(`[HUD Script] Iniciando Etapa 3: Salvar ${payloadsParaSalvar.length} itens...`);
-
-                    for (const item of payloadsParaSalvar) {
-                        console.log(`[HUD Script] Salvando item: ${item.sigla}...`);
-                        await fazerRequisicaoDaPagina(item.url, item.payload, item.sigla);
-                        console.log(`[HUD Script] Sucesso: ${item.sigla}`);
-                    }
-                    console.log('[HUD Script] Etapa 3 (Salvar) concluída com sucesso.');
-
-                    // --- ETAPA 4: Recarrega o diagrama (CHAMADA ÚNICA) ---
-                    btnConfirmar.textContent = '4/5 Recarregando...';
-
-                    const payloadRecarregar = new URLSearchParams();
-                    payloadRecarregar.append('controlador', 'diagrama');
-                    payloadRecarregar.append('metodo', 'carregarCabosEquipamentos');
-                    payloadRecarregar.append('codigo', ultimoCodigoEquipamentoPai);
-                    payloadRecarregar.append('idRazaoSocial', '46');
-
-                    const resultadoRecarga = await fazerRequisicaoDaPagina(
-                        "http://172.16.6.57/geogrid/aconcagua/php/diagramaJson/api.php",
-                        payloadRecarregar.toString(),
-                        "carregarCabosEquipamentos"
-                    );
-
-                    const dataRecarga = JSON.parse(resultadoRecarga.response);
-                    if (!dataRecarga) {
-                        throw new Error('Falha na Etapa 4: Resposta de carregarCabosEquipamentos inválida.');
-                    }
-
-                    // --- ETAPA 5: Chama as recargas FINAIS (em paralelo) ---
-                    btnConfirmar.textContent = '5/5 Carregando portas...';
-
-                    // Encontra os itens recém-criados
-                    const equipamentosRecemCriados = dataRecarga.equipamentos?.filter(eq => siglasEquipamentosCriados.includes(eq.sigla)) || [];
-                    const cabosRecemCriados = dataRecarga.cabosJson?.filter(cabo => cabo.sigla === siglaPonteCriada) || [];
-
-                    console.log(`[HUD Script] Etapa 4 concluída. ${equipamentosRecemCriados.length} equipamentos e ${cabosRecemCriados.length} pontes identificados.`);
-
-                    const promessasDeCargaFinal = [];
-                    const ponta = ultimoCodigoEquipamentoPai.startsWith('TA') ? 'B' : 'A';
-                    const gw = (typeof unsafeWindow !== 'undefined' ? unsafeWindow : window);
-
-                    // Loop 1: Carrega os SPLITTERS
-                    for (const eq of equipamentosRecemCriados) {
-                        const novoCodigoEquipamento = eq.codigo; // ex: JPT_DIV75964
-
-                        const payloadApi = new URLSearchParams();
-                        payloadApi.append('controlador', 'fichaEquipamento');
-                        payloadApi.append('metodo', 'carregarEquipamento');
-                        payloadApi.append('codigo', novoCodigoEquipamento);
-                        payloadApi.append('idRazaoSocial', '46');
-                        promessasDeCargaFinal.push(fazerRequisicaoDaPagina(
-                            "http://172.16.6.57/geogrid/aconcagua/php/diagramaJson/api.php",
-                            payloadApi.toString(), `carregarEquipamento ${novoCodigoEquipamento}`
-                        ));
-
-                        const payloadPortas = new URLSearchParams();
-                        payloadPortas.append('idRazaoSocial', '46');
-                        payloadPortas.append('codigo', novoCodigoEquipamento);
-                        payloadPortas.append('codigoPosteRecipiente', ultimoCodigoEquipamentoPai);
-                        promessasDeCargaFinal.push(fazerRequisicaoDaPagina(
-                            "http://172.16.6.57/geogrid/aconcagua/php/diagramaJson/carregarPortas.php",
-                            payloadPortas.toString(), `carregarPortas ${novoCodigoEquipamento}`
-                        ));
-                    }
-
-                    // Loop 2: Carrega a PONTE
-                    for (const cabo of cabosRecemCriados) {
-                        const novoCodigoCabo = cabo.codigo; // ex: JPT54321
-
-                        const payloadApiCabo = new URLSearchParams();
-                        payloadApiCabo.append('controlador', 'cabos');
-                        payloadApiCabo.append('metodo', 'carregarCabo');
-                        payloadApiCabo.append('codigo', novoCodigoCabo);
-                        payloadApiCabo.append('idRazaoSocial', '46');
-                        payloadApiCabo.append('codigoPosteRecipiente', ultimoCodigoEquipamentoPai);
-                        payloadApiCabo.append('ponta', ponta);
-                        payloadApiCabo.append('caboDeLigacao', 'true');
-                        promessasDeCargaFinal.push(fazerRequisicaoDaPagina(
-                            "http://172.16.6.57/geogrid/aconcagua/php/diagramaJson/api.php",
-                            payloadApiCabo.toString(), `carregarCabo ${novoCodigoCabo}`
-                        ));
-
-                        const payloadFibras = new URLSearchParams();
-                        payloadFibras.append('idRazaoSocial', '46');
-                        payloadFibras.append('codigoCabo', novoCodigoCabo);
-                        payloadFibras.append('codigoPosteRecipiente', ultimoCodigoEquipamentoPai);
-                        payloadFibras.append('ponta', ponta);
-                        payloadFibras.append('caboDeLigacao', 'true');
-                        promessasDeCargaFinal.push(fazerRequisicaoDaPagina(
-                            "http://172.16.6.57/geogrid/aconcagua/php/diagramaJson/carregarFibras.php",
-                            payloadFibras.toString(), `carregarFibras ${novoCodigoCabo}`
-                        ));
-                    }
-
-                    await Promise.all(promessasDeCargaFinal);
-                    console.log('[HUD Script] Etapa 5 (carregarEquipamento/carregarPortas/Fibras) concluídas.');
-
-                    // --- ETAPA 6: Recarrega a UI (AbreDiagrama) e clica ---
-                    btnConfirmar.textContent = 'Recarregando UI...';
-
-                    if (gw && typeof gw.abreDiagrama === 'function') {
-                        console.log(`[HUD Script] Chamando a função de recarregamento global: gw.abreDiagrama(${ultimoCodigoEquipamentoPai}, '46')`);
-                        await gw.abreDiagrama(ultimoCodigoEquipamentoPai, '46');
-                        console.log('[HUD Script] Recarregamento pela função "abreDiagrama" concluído.');
-
-                        btnConfirmar.textContent = 'Finalizando...';
-                        const delayMs = 500;
-                        console.log(`[HUD Script] Aguardando ${delayMs}ms para a UI renderizar...`);
-                        await new Promise(resolve => setTimeout(resolve, delayMs));
-
-                        console.log('[HUD Script] Procurando e clicando no botão ".button.botao-inserir-todos" via jQuery');
-                        const botaoInserirTodos = gw.jQuery('.button.botao-inserir-todos');
-
-                        if (botaoInserirTodos.length > 0) {
-                            if (!botaoInserirTodos.is(':disabled')) {
-                                botaoInserirTodos.click();
-                                console.log('[HUD Script] Botão "Inserir Todos" clicado com sucesso (via jQuery).');
+                                payloadRedeId = idRedeSelecionada;
+                                payloadNomeRede = nomeRedeVisual;
                             } else {
-                                console.warn('[HUD Script] Botão "Inserir Todos" encontrado, mas estava DESABILITADO. O clique foi pulado.');
+                                baseSigla = `spl exp. ${nomeRedeVisual.toUpperCase()}`;
+                                payloadRedeId = "";
+                                payloadNomeRede = nomeRedeVisual;
                             }
-                        } else {
-                            console.warn('[HUD Script] Botão ".button.botao-inserir-todos" NÃO foi encontrado pelo jQuery. A etapa foi pulada.');
+                        } else if (type.startsWith('1x2')) {
+                            const ratio = btnEl.textContent.trim();
+                            baseSigla = `spl ${ratio} ${codigoPoste}`;
+                        } else if (type === 'rede_1x2') {
+                            baseSigla = `1/2 ${nomeRedeVisual.toUpperCase()}`;
+                            payloadNomeRede = nomeRedeVisual;
                         }
 
-                        // Fecha o painel
-                        newPanel.remove();
-                        state.cadastroEquipamentoAtivo = false;
+                        const keywords = baseSigla.includes('spl') ? ['spl'] : ['1/2'];
+                        const siglaFinal = findNextSigla(baseSigla, keywords, existingEquips);
+                        if (!siglaFinal) throw new Error(`Limite atingido para ${baseSigla}`);
 
-                    } else {
-                        throw new Error("Função de recarregamento (abreDiagrama) não encontrada na página (window.abreDiagrama). A UI não será atualizada. Por favor, feche e abra o poste.");
+                        const p = new URLSearchParams();
+                        p.append('codigo', ultimoCodigoEquipamentoPai);
+                        p.append('idRazaoSocial', '46');
+                        p.append('codigoEmpresa', 'JPT');
+                        p.append('id_equipamento', id_equip);
+                        p.append('extensao', extensao);
+                        p.append('rede', payloadRedeId);
+                        p.append('nome_rede', payloadNomeRede);
+                        p.append('sigla', siglaFinal);
+                        p.append('obs', '');
+                        p.append('ip', '');
+                        p.append('projeto', 'false');
+                        p.append('nomeUsuario', 'jhonvictor');
+                        p.append('razaoSocial', 'Jupiter Telecomunicações');
+
+                        payloads.push({
+                            url: "php/diagramaJson/salvaEquipamentos.php",
+                            data: p.toString(),
+                            sigla: siglaFinal
+                        });
                     }
 
-                } catch (e) {
-                    console.error('[HUD Script] Erro na cadeia de confirmação:', e.message || e);
-                    showHudToast(`Ocorreu um erro: ${e.message || e}`);
+                    // --- EXECUÇÃO ---
+                    btn.textContent = `Salvando (${payloads.length})...`;
 
-                    btnConfirmar.disabled = false;
-                    btnCancelar.disabled = false;
-                    btnPadrao.disabled = false;
-                    btnConfirmar.textContent = 'Confirmar';
+                    // Processa a fila sequencialmente
+                    for (const item of payloads) {
+                        await fazerRequisicaoDaPagina(item.url, item.data, item.sigla);
+                    }
+
+                    btn.textContent = "Atualizando...";
+                    const gw = (typeof unsafeWindow !== 'undefined' ? unsafeWindow : window);
+                    if (gw.abreDiagrama) {
+                        gw.abreDiagrama(ultimoCodigoEquipamentoPai, '46');
+                        setTimeout(() => {
+                            gw.jQuery('.button.botao-inserir-todos').click();
+                            this.showToastGeneric("Sucesso!", "#00b894");
+                            panel.remove();
+                        }, 800);
+                    } else {
+                        this.showToastGeneric("Salvo! Recarregue.", "#ffeaa7");
+                        panel.remove();
+                    }
+
+                } catch (err) {
+                    console.error(err);
+                    this.showToastGeneric(err.message || "Erro ao salvar", "#ff7675");
+                    btn.disabled = false;
+                    btn.textContent = originalText;
                 }
+            };
+        },
+
+        bindGlobalEvents: function() {
+            // ... (listeners de keydown e mousedown mantidos) ...
+            document.addEventListener('keydown', (e) => { if(e.code === 'NumpadAdd') { e.preventDefault(); this.toggleVisibility(); }});
+            document.addEventListener('mousedown', (e) => { const p = e.target.closest('.gg-panel'); if(p) p.style.zIndex = ++this.zIndexCounter; });
+
+            // LISTENERS DO HYBRID ENGINE
+            document.addEventListener('hud:structureLoad', (e) => {
+                const data = JSON.parse(e.detail);
+
+                // NOVO: Resetar flag de redimensionamento manual para a nova caixa
+                this.isManuallyResized = false;
+
+                this.currentBox.title = data.titulo;
+                this.currentBox.data = data.equipamentos;
+
+                // Renderiza (se estiver fechado, apenas atualiza o HTML interno)
+                this.renderClientList();
             });
 
-        }, true); // Usa a fase de captura
-    }
-
-    // --- (INÍCIO) MÓDULO DE INJEÇÃO V2 (vincularCliente) ---
-/**
- * Inicia o "rapto" (monkey-patch) das funções do diagrama
- * para injetar dados de cliente diretamente no SVG. (V2 - Interativo Corrigido)
- */
-function iniciarInjecaoDiagramaV2() {
-    console.log("[HUD Script] Módulo de Injeção V2 (Interativo) iniciado.");
-    const gw = (typeof unsafeWindow !== 'undefined' ? unsafeWindow : window);
-
-    // Helper para normalizar nomes de rede (copiado da lógica da HUD)
-    const normalizarRede = nome => nome ? nome.replace(/^\d+\s*-\s*/, "").trim().toLowerCase() : "";
-
-    const interval = setInterval(() => {
-        // Espera que o protótipo da FIBRA esteja carregado
-        if (gw.geogrid &&
-            gw.geogrid.modulo &&
-            gw.geogrid.modulo.diagrama &&
-            gw.geogrid.modulo.diagrama.objetos &&
-            gw.geogrid.modulo.diagrama.objetos.fibra &&
-            gw.geogrid.modulo.diagrama.objetos.fibra.prototype.vincularCliente &&
-            gw.geogrid.modulo.diagrama.objetos.fibra.prototype.removerCliente) {
-
-            clearInterval(interval);
-            console.log("[HUD Script] Protótipo 'fibra.prototype' detectado. Aplicando patches V11 (Correção de Remoção)...");
-
-            try {
-                // Aplica o patch na função de VINCULAR
-                patchVincularCliente_V11(gw, normalizarRede);
-                // Aplica o patch na função de REMOVER
-                patchRemoverCliente_V4(gw);
-                console.log("[HUD Script] Patches V11 (vincular/remover) aplicados com sucesso!");
-            } catch (e) {
-                console.error("[HUD Script] Falha grave ao aplicar patch V11:", e);
-            }
-        }
-    }, 500); // Verifica a cada 500ms
-}
-
-/**
- * Patch 1: Modifica 'vincularCliente' para DESENHAR os nossos dados. (V11 - Salva Referência)
- */
-function patchVincularCliente_V11(gw, normalizarRede) {
-    // 1. Acesso às variáveis da PÁGINA
-    const $ = gw.$;
-
-    // 2. Guarda a função original
-    const originalVincularCliente = gw.geogrid.modulo.diagrama.objetos.fibra.prototype.vincularCliente;
-
-    // 3. Substitui a função
-    gw.geogrid.modulo.diagrama.objetos.fibra.prototype.vincularCliente = async function(idCliente) {
-        // 'this' é a 'fibra'
-
-        // --- CÓDIGO ORIGINAL (REIMPLEMENTADO) ---
-        let dadosCliente;
-        try {
-            dadosCliente = await $.ajax({
-                type: 'post',
-                url: 'php/diagramaJson/consultarCliente.php',
-                dataType: 'json',
-                data: {
-                    idRazaoSocial: '46', // ID Fixo
-                    idCliente: idCliente
-                }
-            });
-        } catch (e) {
-            console.error("[HUD Patch V11] Falha ao chamar consultarCliente.php:", e);
-            return originalVincularCliente.apply(this, arguments);
-        }
-
-        let corCliente = '';
-        // Novo: Verifica se o cliente é ATIVO e está OFFLINE
-        const clienteInfoGlobal = window.__hudState__?.infoClientes?.[idCliente];
-        const statusConexao = clienteInfoGlobal?.statusConexao;
-        const isAtivoOffline = dadosCliente.registro.nome.includes('ATIVO') && statusConexao === 'Offline';
-
-        // ⚠️ (NOVO) Adiciona a cor do cliente ativo OFFLINE (Lilás)
-        if (isAtivoOffline) {
-            corCliente = '#993399'; // Lilás (Cor de sua preferência)
-        }
-        else if (dadosCliente.registro.nome.includes('desconhecido'))
-            corCliente = '#a5a5a5';
-        else if (dadosCliente.registro.nome.includes('ATIVO'))
-            corCliente = '#72f542'; // Cor ATIVO/ONLINE
-        else if (dadosCliente.registro.nome.includes('SUSPENSO'))
-            corCliente = '#FFCC00';
-        else
-            corCliente = '#f54242'; // Cor CANCELADO
-
-        this.flags.cliente = true;
-        this.cliente = this.container.svg.append(function(){
-            return $(`
-            <svg>
-                <g style="fill:${corCliente};stroke:black;stroke-width:0.3;cursor:pointer;">
-                    <circle cx="5.54235" cy="2.28534" r="2.28534"/>
-                    <path d="M9.15385,24.81109c0-3.061,0-5.54235,5.54235-5.54235s5.54235,2.48139,5.54235,5.54235" transform="translate(-9.15385 -14.88462)"/>
-                </g>
-            </svg>`).children()[0];
-        });
-        const clientIcon = this.cliente; // Guarda a referência ao "boneco"
-
-        this.cliente
-            .on('mouseenter', () => {
-                this.objeto.diagrama.template.trigger('focouCliente', [this, gw.d3.mouse(gw.d3.select('body').node()), idCliente]);
-            })
-            .on('mouseleave', () => {
-                this.objeto.diagrama.template.trigger('desfocouCliente', [this]);
+            document.addEventListener('hud:clientData', (e) => {
+                // ... (mantido igual) ...
+                const client = JSON.parse(e.detail);
+                this.currentBox.clientCache[client.id] = client.nome;
+                this.renderClientList();
             });
 
-        this.reposicionar();
-        // --- FIM DO CÓDIGO ORIGINAL ---
+            document.addEventListener('click', (e) => {
+                // Procura pelo botão nativo de adicionar equipamento
+                const btn = e.target.closest('.adicionar-equipamento-recipiente');
 
-
-        // --- (INÍCIO DA MODIFICAÇÃO - V11 INTERATIVO) ---
-        // ⚠️ ENVOLVIDO NA CONDIÇÃO DE ATIVAÇÃO NA FUNÇÃO runMainScript()
-        try {
-            if (dadosCliente && this.cliente) {
-
-                // 1. EXTRAI OS DADOS
-                const contrato = (dadosCliente.registro.nome.split(" - ")[1] || "N/A").trim();
-                const rede = (dadosCliente.rede?.rede || "").replace(/Card \d+ Porta \d+$/i, "").trim();
-
-                // 2. LÓGICA DE LIMITE DE 35 CHARS (V9)
-                const MAX_TOTAL_LENGTH = 35;
-                const separador = " - ";
-                let espacoParaRede = MAX_TOTAL_LENGTH - contrato.length - separador.length;
-                if (espacoParaRede < 0) espacoParaRede = 0;
-                let redeFinal = "";
-                if (rede.length > 0 && espacoParaRede > 0) {
-                    if (rede.length > espacoParaRede) {
-                        if (espacoParaRede > 3) {
-                            redeFinal = rede.substring(0, espacoParaRede - 3) + "...";
-                        } else {
-                            redeFinal = "";
-                        }
+                if (btn) {
+                    // Verifica se a flag de fallback está ativa (quando clicamos em "Tela Padrão")
+                    if (window.__hudFallbackActive__) {
+                        return; // Deixa o site agir normalmente
                     } else {
-                        redeFinal = rede;
+                        e.preventDefault();
+                        e.stopPropagation();
+
+                        // Abre nosso painel
+                        this.createEquipmentPanel();
                     }
                 }
-
-                // 3. PREPARA O SVG
-                const parentGroup = clientIcon.node().parentNode; // O <g> que contém o "boneco"
-                const svgNS = "http://www.w3.org/2000/svg";
-                const transform = clientIcon.attr('transform');
-                const match = /translate\(([^,]+),([^)]+)\)/.exec(transform);
-                const iconX = parseFloat(match[1]);
-                const iconY = parseFloat(match[2]);
-
-                // 4. LÓGICA DE POSIÇÃO E ORDEM (V8)
-                const lado = this.objeto?.lado || 'e';
-                let x, y, textAnchor, textoCompleto;
-                if (lado === 'd') {
-                    textoCompleto = contrato;
-                    if (redeFinal) textoCompleto += ` - ${redeFinal}`;
-                    x = iconX + 16;
-                    y = iconY + 8;
-                    textAnchor = "start";
-                } else {
-                    textoCompleto = contrato;
-                    if (redeFinal) textoCompleto = `${redeFinal} - ${contrato}`;
-                    x = iconX - 5;
-                    y = iconY + 8;
-                    textAnchor = "end";
-                }
-
-                // 5. CRIA O TEXTO
-                const textElement = document.createElementNS(svgNS, "text");
-                textElement.setAttribute("x", String(x));
-                textElement.setAttribute("y", String(y));
-                textElement.setAttribute("fill", "black");
-                textElement.setAttribute("font-size", "10px");
-                textElement.setAttribute("font-family", "Arial, sans-serif");
-                textElement.setAttribute("text-anchor", textAnchor);
-                textElement.setAttribute("style", "cursor: pointer; user-select: none;"); // Torna clicável
-                textElement.textContent = textoCompleto;
-
-                // 6. CRIA O FUNDO (RECT)
-                parentGroup.appendChild(textElement); // Adiciona temporariamente para medir
-                const bbox = textElement.getBBox(); // Mede o texto
-                parentGroup.removeChild(textElement); // Remove
-
-                const rectElement = document.createElementNS(svgNS, "rect");
-                rectElement.setAttribute("x", String(bbox.x - 2)); // Padding horizontal
-                rectElement.setAttribute("y", String(bbox.y - 1)); // Padding vertical
-                rectElement.setAttribute("width", String(bbox.width + 4));
-                rectElement.setAttribute("height", String(bbox.height + 2));
-                rectElement.setAttribute("rx", "2"); // Cantos arredondados
-                rectElement.setAttribute("style", "cursor: pointer;");
-
-                // 7. LÓGICA DE REDE DIVERGENTE E CORES
-                const equipId = this.objeto?.config?.id;
-                // 'state' e 'equipamentosInfo' são lidos do escopo GLOBAL do UserScript
-                const equipamentoInfo = (equipId && typeof equipamentosInfo !== 'undefined') ? equipamentosInfo[equipId] : null;
-                const nomeRedeEquipamento = equipamentoInfo ? normalizarRede(equipamentoInfo.nomeRede) : '';
-                const redeClienteNorm = normalizarRede(rede);
-                const isDemanda = equipId === '__porDemanda__';
-
-                let mesmaRede = true; // Padrão
-                if (nomeRedeEquipamento && redeClienteNorm) {
-                    mesmaRede = isDemanda ? true : redeClienteNorm.includes(nomeRedeEquipamento);
-                }
-
-                const destacar = (typeof state !== 'undefined' && state.destacarRedesDivergentes && !mesmaRede);
-                const isLight = document.body.classList.contains('hud-light-mode');
-
-                const highlightFill = isLight ? '#e1e4e8' : '#3a3f4b'; // Fundo do hover
-                const divergentFill = isLight ? 'rgba(215, 58, 73, 0.2)' : 'rgba(224, 108, 117, 0.2)'; // Fundo vermelho
-                const defaultFill = 'transparent'; // Fundo padrão
-
-                rectElement.setAttribute("fill", defaultFill);
-
-                // 8. CRIA O GRUPO INTERATIVO
-                const interactiveGroup = document.createElementNS(svgNS, "g");
-                interactiveGroup.setAttribute("class", "hud-injected-group");
-                interactiveGroup.appendChild(rectElement); // Fundo primeiro
-                interactiveGroup.appendChild(textElement); // Texto na frente
-                parentGroup.appendChild(interactiveGroup); // Adiciona o grupo ao SVG
-
-                // *** INÍCIO DA CORREÇÃO (V11) ***
-                // Salva uma referência direta do grupo na instância da fibra ('this')
-                this.__hudInjectedGroup__ = interactiveGroup;
-                // *** FIM DA CORREÇÃO ***
-
-                // 9. ADICIONA OS EVENT LISTENERS
-                interactiveGroup.dataset.isClicked = 'false';
-
-                const setClickedState = (isClicked) => {
-                    interactiveGroup.dataset.isClicked = String(isClicked);
-                    if (isClicked) {
-                        textElement.setAttribute("opacity", "0.5");
-                        textElement.setAttribute("text-decoration", "line-through");
-                        clientIcon.attr("opacity", "0.5"); // Tacha o "boneco"
-                        rectElement.setAttribute("fill", defaultFill); // Volta ao fundo padrão
-                    } else {
-                        textElement.setAttribute("opacity", "1");
-                        textElement.setAttribute("text-decoration", "none");
-                        clientIcon.attr("opacity", "1"); // Restaura o "boneco"
-                        rectElement.setAttribute("fill", highlightFill); // Mantém o highlight
-                    }
-                };
-
-                interactiveGroup.addEventListener('mouseenter', () => {
-                    if (interactiveGroup.dataset.isClicked === 'false') {
-                        rectElement.setAttribute("fill", highlightFill);
-                    }
-                });
-
-                interactiveGroup.addEventListener('mouseleave', () => {
-                    if (interactiveGroup.dataset.isClicked === 'false') {
-                        rectElement.setAttribute("fill", defaultFill);
-                    }
-                });
-
-                interactiveGroup.addEventListener('click', () => {
-                    const newState = interactiveGroup.dataset.isClicked === 'false';
-                    setClickedState(newState);
-                });
-
-            }
-        } catch (e) {
-            console.error("[HUD Patch V11] Erro ao injetar dados no SVG:", e);
+            }, true); // Use capture (true) para pegar o evento antes do site/jQuery
         }
-        // --- (FIM) DA MODIFICAÇÃO ---
     };
-}
 
-/**
- * Patch 2: Modifica 'removerCliente' para LIMPAR os nossos dados. (V4 - Corrigido)
- */
-function patchRemoverCliente_V4(gw) {
-    // 1. Guarda a função original
-    const originalRemoverCliente = gw.geogrid.modulo.diagrama.objetos.fibra.prototype.removerCliente;
+    UIManager.init();
 
-    // 2. Substitui
-    gw.geogrid.modulo.diagrama.objetos.fibra.prototype.removerCliente = function() {
-        // 'this' é a 'fibra'
-
-        // --- (INÍCIO) NOSSA LIMPEZA (V4 - CORRIGIDA) ---
-        try {
-            // 'this.__hudInjectedGroup__' foi salvo no 'patchVincularCliente_V11'
-            if (this.__hudInjectedGroup__ && this.__hudInjectedGroup__.parentNode) {
-                // Remove o grupo específico que salvamos
-                this.__hudInjectedGroup__.parentNode.removeChild(this.__hudInjectedGroup__);
-                this.__hudInjectedGroup__ = null; // Limpa a referência
-            } else {
-                // Se a referência não existir, loga um aviso, mas não faz nada
-                // para evitar apagar o grupo errado.
-                console.warn("[HUD Patch V4] Não foi possível encontrar '__hudInjectedGroup__' para remover.");
-            }
-        } catch(e) {
-            console.error("[HUD Patch V4] Erro ao limpar grupo injetado:", e);
-        }
-        // --- (FIM) NOSSA LIMPEZA ---
-
-        // 3. Chama a função original para remover o "bonequinho"
-        return originalRemoverCliente.apply(this, arguments);
-    };
-}
-// --- (FIM) MÓDULO DE INJEÇÃO V2 (vincularCliente) ---
-
-// --- INICIAÇÃO (FINAL) ---
-
-// (NOVO) Criamos uma função 'main' assíncrona para controlar a ordem de inicialização
-    async function runMainScript() {
-
-        // 1. Funções síncronas que podem rodar primeiro
-        // (Estes não dependem do banco de dados)
-        injetarEstilosGlobais();
-        injetarScriptPagina();
-        aplicarPatchMarcadores();
-        iniciarInterceptadorDoMapa();
-        ativarAvisoDeSaida();
-
-        // 2. (IMPORTANTE) Espera o DB estar pronto
-        /*
-        try {
-            await iniciarCacheDB(); // <-- O 'await' pausa aqui até o DB estar pronto
-            console.log("[HUD Script] Banco de dados pronto.");
-        } catch (e) {
-            console.error("[HUD Script] FALHA CRÍTICA ao iniciar DB. O cache não funcionará.", e);
-            // Mesmo se falhar, o resto do script (HUD, etc.) pode continuar
-        }
-        */
-
-        // 3. Funções que dependem do DB ou devem rodar após o 'await'
-        // (iniciarInterceptadorXHR agora pode usar 'cacheDB' com segurança)
-        iniciarListenerDeBypassDeCarga(); // <-- ADICIONE ESTA LINHA
-        iniciarListenerDeColarCoordenadas();
-        iniciarInterceptadorXHR(); // <-- Agora só roda DEPOIS do DB
-        iniciarListenerDeBuscaPoste();
-        iniciarListenerDePesquisaRapida();
-        iniciarListenerAdicionarEquipamento();
-
-        // NOVO: Adiciona o módulo de injeção do diagrama apenas se a setting estiver ativa
-        if (state.exibirInfoDiagrama) {
-            iniciarInjecaoDiagramaV2();
-        }
-
-        // 4. LISTENERS DA PONTE (Custom Events)
-        document.addEventListener('hud:showProgress', (e) => {
-            showHudToastProgress(e.detail.message);
-        });
-
-        document.addEventListener('hud:hideProgress', () => {
-            hideHudToastProgress();
-        });
-
-        console.log("[HUD Script] Todos os listeners iniciados.");
-    }
-
-    // (NOVO) Chama a função main assíncrona para iniciar tudo
-    runMainScript();
-
-    })(); // Mantém o fechamento do IIFE original
+})();
