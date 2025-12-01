@@ -1,15 +1,13 @@
 // ==UserScript==
 // @name         New - GeoGrid Tools
 // @namespace    http://tampermonkey.net/
-// @version      5.0
+// @version      5.1
 // @description  Ferramentas avançadas para GeoGrid Maps
 // @author       Jhon
 // @match        http://172.16.6.57/geogrid/aconcagua/*
 // @run-at       document-end
 // @grant        unsafeWindow
 // @grant        GM_xmlhttpRequest
-// @downloadURL https://github.com/Jhondbs/Geogrid-HUD/raw/refs/heads/main/Geo%20Grid%20Maps%20HUD%20(Atalho)-1.3.user.js
-// @updateURL https://github.com/Jhondbs/Geogrid-HUD/raw/refs/heads/main/Geo%20Grid%20Maps%20HUD%20(Atalho)-1.3.user.js
 // ==/UserScript==
 
 (function() {
@@ -487,25 +485,30 @@
                     try {
                         const dataJson = JSON.parse(responseText);
 
-                        // --- LÓGICA DE VALIDAÇÃO CORRIGIDA ---
+                        // --- LÓGICA DE VALIDAÇÃO (ATUALIZADA) ---
+
                         // 1. Padrão: verifica se status é true
                         const sucessoPadrao = (dataJson.status === true || dataJson.status === "true");
 
-                        // 2. Exceção: carregaAcessoriosPoste (não devolve status, devolve 'dados')
+                        // 2. Exceção A: carregaAcessoriosPoste (retorna objeto com 'dados')
                         const excecaoAcessorios = (url.includes('carregaAcessoriosPoste') && dataJson.dados);
 
-                        if (sucessoPadrao || excecaoAcessorios) {
+                        // 3. Exceção B: carregaCompletar (retorna Array direto)
+                        const excecaoArray = Array.isArray(dataJson);
+
+                        if (sucessoPadrao || excecaoAcessorios || excecaoArray) {
                             resolve({ response: responseText });
                         } else {
-                            // Se a API diz que falhou, rejeitamos
+                            // Se a API diz que falhou (e não é um array nem a exceção), rejeitamos
                             reject(dataJson.mensagem || `Erro na API: ${debugInfo}`);
                         }
                     } catch (e) {
-                        // Se não for JSON válido
+                        // Se não for JSON válido (pode ser HTML ou texto puro)
+                        // Para cadastros críticos, queremos rejeitar se não for JSON.
                         if(url.includes('salvaEquipamentos') || url.includes('cadastraCaboLigacao')) {
-                            reject(`Resposta inválida em ${debugInfo}`);
+                            reject(`Resposta inválida (não JSON) em ${debugInfo}`);
                         } else {
-                            // Para outras chamadas, resolve mesmo sem JSON (pode ser HTML)
+                            // Para outras chamadas, resolvemos (pode ser HTML de erro ou sucesso sem JSON)
                             resolve({ response: responseText });
                         }
                     }
@@ -546,6 +549,119 @@
     }
 
     /**
+     * (NOVO) Intercepta APENAS a "Busca no Mapa" para localização rápida por coordenadas.
+     * A busca do Menu continua com o comportamento padrão do site (lento/carregamento de árvore).
+     */
+    function iniciarListenerDePesquisaRapida() {
+        document.body.addEventListener('keydown', async function(e) {
+
+            // 1. Apenas tecla Enter
+            if (e.key !== 'Enter') return;
+
+            const input = e.target;
+
+            // 2. IDENTIFICAÇÃO DO ALVO:
+            // Verifica se o input pertence ao componente de busca do mapa (flutuante)
+            // Geralmente ele está dentro de uma div com a classe 'busca-mapa-principal'
+            const isMapSearch = input.closest('.busca-mapa-principal');
+
+            // Se NÃO for a busca do mapa (ex: é a busca do menu), SAIMOS.
+            // Isso deixa o site rodar o código nativo (busca lenta/padrão no menu).
+            if (!isMapSearch) return;
+
+            // 3. Verifica se parece um código de equipamento (tem números)
+            // Se for apenas texto (ex: "Rua das Flores"), deixamos o Google Maps nativo buscar o endereço.
+            const valor = input.value.trim();
+            const temNumero = /\d/.test(valor);
+
+            if (!temNumero) return; // Deixa passar para a busca de endereço nativa
+
+            // 4. INTERCEPTAÇÃO
+            console.log('[HUD Script] Busca Rápida no Mapa acionada para:', valor);
+            e.preventDefault();
+            e.stopPropagation();
+
+            const originalPlaceholder = input.placeholder;
+            input.value = `Localizando ${valor}...`;
+            input.disabled = true;
+
+            try {
+                // 5. Consulta a API "carregaCompletar" (Rápida, retorna lat/lng)
+                const body = new URLSearchParams();
+                body.append('idRazaoSocial', '46'); // ID Fixo
+                body.append('json[]', valor); // O código digitado
+                body.append('viabilidade', 'cabos,ficha_equipamento,ficha_terminal');
+
+                const response = await fazerRequisicaoDaPagina(
+                    "php/arquivosComuns/carregaCompletar.php",
+                    body.toString(),
+                    `Busca Mapa ${valor}`
+                );
+
+                const data = JSON.parse(response.response);
+                // A API pode retornar um array ou objeto, pegamos o primeiro válido
+                const loc = (Array.isArray(data) && data.length > 0) ? data[0] : null;
+
+                if (loc && loc.lat && loc.lng) {
+                    // 6. SUCESSO: Move o mapa e desenha destaque
+                    console.log(`[HUD Script] Coordenadas encontradas: ${loc.lat}, ${loc.lng}`);
+
+                    const gw = (typeof unsafeWindow !== 'undefined' ? unsafeWindow : window);
+                    const map = gw.__googleMapInstancia__;
+
+                    if (map) {
+                        const newCoords = { lat: parseFloat(loc.lat), lng: parseFloat(loc.lng) };
+
+                        // Move a câmera
+                        map.setCenter(newCoords);
+                        map.setZoom(19);
+
+                        // Remove círculo anterior se existir
+                        if (gw.__hudSearchCircle__) {
+                            gw.__hudSearchCircle__.setMap(null);
+                        }
+
+                        // Desenha novo círculo de destaque (Raio 25m)
+                        gw.__hudSearchCircle__ = new gw.google.maps.Circle({
+                            strokeColor: '#FF0000',
+                            strokeOpacity: 0.8,
+                            strokeWeight: 2,
+                            fillColor: '#FF0000',
+                            fillOpacity: 0.35,
+                            map: map,
+                            center: newCoords,
+                            radius: 25
+                        });
+
+                        // Feedback visual
+                        input.value = valor.toUpperCase();
+                        // Opcional: Mostra um toast rápido
+                        if(typeof UIManager !== 'undefined') {
+                            UIManager.showToastGeneric(`Encontrado: ${loc.sg || valor}`, "#00b894");
+                        }
+                    }
+                } else {
+                    // 7. NÃO ENCONTRADO
+                    console.warn('[HUD Script] Item não retornado pela API rápida.');
+                    input.value = valor; // Restaura o texto
+                    if(typeof UIManager !== 'undefined') {
+                        UIManager.showToastGeneric("Item não localizado nas coordenadas.", "#ff7675");
+                    }
+                }
+
+            } catch (err) {
+                console.error('[HUD Script] Erro na busca rápida:', err);
+                input.value = valor;
+            } finally {
+                input.disabled = false;
+                input.placeholder = originalPlaceholder;
+                input.focus();
+            }
+
+        }, true); // Use capture para garantir prioridade sobre o listener nativo
+    }
+
+    /**
      * =======================================================================================
      * MODULE: UI MANAGER
      * =======================================================================================
@@ -579,6 +695,7 @@
             this.createSidebar();
             this.bindGlobalEvents();
             this.applyTheme();
+            iniciarListenerDePesquisaRapida();
             console.log("[GeoGrid Tools] UI Initialized.");
         },
 
