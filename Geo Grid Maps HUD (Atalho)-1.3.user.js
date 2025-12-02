@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         New - GeoGrid Tools
 // @namespace    http://tampermonkey.net/
-// @version      5.6
+// @version      5.7
 // @description  Ferramentas avançadas para GeoGrid Maps + OCR
 // @author       Jhon
 // @match        http://172.16.6.57/geogrid/aconcagua/*
@@ -225,6 +225,54 @@
                 infoClientes[idCliente] = { id: idCliente, data: data };
                 triggerRender();
             }
+        },
+        "carregaTipoPadrao": (data, url, bodyParams) => {
+            const fabricante = data?.fabricante;
+            const tipo = data?.tipo;
+            let codigoParaInserir = null;
+            let seletorDoInput = null;
+
+            // Usa o último poste capturado pelo script (salvo em window.ultimoCodigoPoste)
+            const codigoPoste = window.ultimoCodigoPoste || "00000";
+
+            // 1. Define o padrão de nome baseado no tipo retornado
+            if (fabricante === "Overtek" && tipo === "Caixa de Atendimento (Splitter)") {
+                codigoParaInserir = `cx em. ${codigoPoste}`;
+                seletorDoInput = '.template-caixa input[name="codigo"]';
+            } else if (fabricante === "Furukawa" && tipo === "terminal de teste") {
+                codigoParaInserir = `cx at. ${codigoPoste}`;
+                seletorDoInput = '.template-terminal input[name="codigo"]';
+            }
+
+            if (!codigoParaInserir) return;
+
+            // 2. Cria um observador para esperar a janela de cadastro abrir no DOM
+            const observer = new MutationObserver((mutationsList, obs) => {
+                for (const mutation of mutationsList) {
+                    if (mutation.type === 'childList') {
+                        // Procura pela janela de cadastro de acessório
+                        const painel = document.querySelector('.padrao-painel-flutuante.painel-acessorio-cadastro');
+
+                        if (painel && painel.style.display !== 'none') {
+                            // Tenta achar o input específico
+                            const inputCodigo = painel.querySelector(seletorDoInput) || painel.querySelector('input[name="codigo"]');
+
+                            if (inputCodigo) {
+                                inputCodigo.value = codigoParaInserir;
+                                inputCodigo.focus(); // Foca no campo para facilitar
+                                obs.disconnect(); // Para de observar
+                                return;
+                            }
+                        }
+                    }
+                }
+            });
+
+            // Inicia a observação
+            observer.observe(document.body, { childList: true, subtree: true });
+
+            // Segurança: Desliga o observador após 3 segundos se a janela não abrir
+            setTimeout(() => observer.disconnect(), 3000);
         }
     };
 
