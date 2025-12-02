@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         New - GeoGrid Tools
 // @namespace    http://tampermonkey.net/
-// @version      5.5
+// @version      5.6
 // @description  Ferramentas avançadas para GeoGrid Maps + OCR
 // @author       Jhon
 // @match        http://172.16.6.57/geogrid/aconcagua/*
@@ -146,7 +146,7 @@
                 const metodo = bodyParams.get("metodo");
                 const codigo = bodyParams.get("codigo");
 
-                // Captura ID do Pai (ex: Caixa ou Armário onde estamos clicando)
+                // Captura ID do Pai (ex: Caixa onde estamos clicando)
                 if (controlador === 'diagrama' && metodo === 'carregarCabosEquipamentos' && codigo) {
                     ultimoCodigoEquipamentoPai = codigo;
                 }
@@ -665,6 +665,125 @@
         }, true); // Use capture para garantir prioridade sobre o listener nativo
     }
 
+    // --- FUNÇÕES DE COLAR COORDENADAS E LINKS ---
+
+    function resolveShortlinkWithGM(url) {
+        return new Promise((resolve, reject) => {
+            try {
+                let target = url;
+                if (!/^https?:\/\//i.test(target)) target = 'https://' + target;
+
+                GM_xmlhttpRequest({
+                    method: "GET",
+                    url: target,
+                    headers: { "User-Agent": "Mozilla/5.0 (Tampermonkey)" },
+                    onload(response) {
+                        try {
+                            const final = response.finalUrl || response.responseURL || null;
+                            const html = response.responseText || '';
+                            if (final) return resolve({ url: final, html });
+
+                            const meta = html.match(/<meta\s+http-equiv=["']refresh["']\s+content=["'][^;]+;\s*url=([^"']+)["']/i);
+                            if (meta) return resolve({ url: meta[1], html });
+
+                            resolve({ url: target, html });
+                        } catch (e) { reject(e); }
+                    },
+                    onerror(err) { reject(err); },
+                    ontimeout(err) { reject(err); },
+                });
+            } catch (e) { reject(e); }
+        });
+    }
+
+    function extractCoords(text) {
+        if (!text) return null;
+        let m;
+        // Padrões do Google Maps e Lat/Lon
+        if (m = text.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/)) return { lat: m[1], lon: m[2] };
+        if (m = text.match(/@(-?\d+\.\d+),\s*(-?\d+\.\d+)/)) return { lat: m[1], lon: m[2] };
+        if (m = text.match(/[?&]q=(-?\d+\.\d+),\s*(-?\d+\.\d+)/)) return { lat: m[1], lon: m[2] };
+        if (m = text.match(/[?&]ll=(-?\d+\.\d+),\s*(-?\d+\.\d+)/)) return { lat: m[1], lon: m[2] };
+        const nums = text.match(/-?\d+\.\d+/g);
+        if (nums && nums.length >= 2) return { lat: nums[0], lon: nums[1] };
+        return null;
+    }
+
+    function iniciarListenerDeColarCoordenadas() {
+        document.body.addEventListener('paste', async function(e) {
+            // Só age se colar no input de latitude
+            if (!e.target || !e.target.matches || !e.target.matches('input[name="latitude"]')) return;
+
+            const latInput = e.target;
+            // Tenta achar o container pai para pegar o campo de longitude e o botão OK
+            // No Geogrid novo, geralmente estão próximos
+            const commonParent = latInput.closest('div') || latInput.parentElement;
+            if (!commonParent) return;
+
+            // Busca input longitude e botão OK no mesmo container
+            const lonInput = commonParent.parentElement.querySelector('input[name="longitude"]');
+            const okButton = commonParent.parentElement.querySelector('button[name="ok"]') ||
+                             Array.from(document.querySelectorAll('button')).find(b => b.textContent.includes('Ok') && commonParent.parentElement.contains(b));
+
+            if (!lonInput) return;
+
+            const pastedText = (e.clipboardData || window.clipboardData).getData('text') || '';
+            const raw = pastedText.trim();
+            if (!raw) return;
+
+            const preencher = (lat, lon) => {
+                if (!lat || !lon) return;
+                e.preventDefault(); // Impede a colagem do texto original
+                latInput.value = lat;
+                lonInput.value = lon;
+                // Dispara eventos para o site reconhecer a mudança
+                latInput.dispatchEvent(new Event('change'));
+                lonInput.dispatchEvent(new Event('change'));
+
+                if (okButton) okButton.focus(); // Foca no OK para facilitar
+
+                if(typeof UIManager !== 'undefined') UIManager.showToastGeneric("Coordenadas coladas!", "#00b894");
+            };
+
+            // 1. Verifica link do Google Maps
+            const shortlinkPattern = /\b(?:https?:\/\/)?(?:maps\.app\.goo\.gl|goo\.gl\/maps|goo\.gl)\//i;
+            const longlinkPattern  = /\bhttps?:\/\/(?:www\.)?google\.[^\/]+\/maps/i;
+
+            if (shortlinkPattern.test(raw) || longlinkPattern.test(raw)) {
+                e.preventDefault();
+                latInput.value = "Lendo link...";
+
+                try {
+                    let resolved = { url: raw, html: '' };
+                    if (shortlinkPattern.test(raw)) {
+                        resolved = await resolveShortlinkWithGM(raw);
+                    }
+
+                    let coords = extractCoords(resolved.url || raw);
+                    if (!coords && resolved.html) coords = extractCoords(resolved.html);
+
+                    if (coords) {
+                        preencher(coords.lat, coords.lon);
+                    } else {
+                        latInput.value = "Link não reconhecido";
+                    }
+                } catch (err) {
+                    console.error("Erro link:", err);
+                    latInput.value = "Erro";
+                }
+                return;
+            }
+
+            // 2. Verifica coordenadas brutas (ex: -23.55, -46.66)
+            // Aceita espaço, vírgula ou ponto e vírgula como separador
+            const coordMatch = raw.match(/^(-?\d+\.\d+)[\s,;]+(-?\d+\.\d+)$/);
+            if (coordMatch) {
+                preencher(coordMatch[1], coordMatch[2]);
+            }
+
+        }, true); // Use capture
+    }
+
     /**
      * =======================================================================================
      * MODULE: UI MANAGER
@@ -700,6 +819,7 @@
             this.bindGlobalEvents();
             this.applyTheme();
             iniciarListenerDePesquisaRapida();
+            iniciarListenerDeColarCoordenadas();
             console.log("[GeoGrid Tools] UI Initialized.");
         },
 
@@ -1906,7 +2026,7 @@
                 this.adjustPanelHeight(); // Ajusta altura com a nova barra
             };
 
-            // --- BOTÃO COPIAR ---
+            // --- BOTÃO COPIAR (CORRIGIDO PARA HTTP) ---
             const btnCopy = document.createElement('button');
             btnCopy.className = 'gg-header-btn';
             btnCopy.title = "Copiar lista";
@@ -1914,7 +2034,64 @@
 
             btnCopy.onclick = (e) => {
                 e.stopPropagation();
-                this.copyToClipboard(panel);
+
+                // Reconstrói a lista de texto baseada nos dados visíveis
+                const linhasParaCopiar = [];
+                const config = window.__hudState__; // Pega configurações atuais
+
+                // Itera sobre a ordem visual dos equipamentos
+                equipamentosOrdem.forEach(equipId => {
+                    const equip = equipamentosInfo[equipId];
+                    if (!equip || !equip.clientes) return;
+
+                    equip.clientes.forEach(item => {
+                        // Se for para copiar apenas cancelados e o status não for cancelado, pula
+                        // Nota: A lógica de filtro do status depende de como você guarda o status.
+                        // Aqui simplifiquei para copiar o que está renderizado se tiver dados.
+
+                        if (item.id && infoClientes[item.id]) {
+                            const dados = infoClientes[item.id].data;
+                            const reg = dados.registro || {};
+                            const nomeFull = reg.nome || "Desconhecido";
+
+                            // Lógica de Filtro (Opcional, baseada nas configs)
+                            if (config.somenteCancelados && !nomeFull.includes('CANCELADO') && !nomeFull.includes('Desativado')) {
+                                return;
+                            }
+
+                            // Formatação da linha
+                            let textoLinha = "";
+                            const parts = nomeFull.split(' - ');
+                            const contrato = parts.length >= 2 ? parts[1].trim() : item.id;
+
+                            textoLinha += contrato;
+
+                            if (config.exibirNomeCliente) {
+                                let nomeReal = parts.slice(2).join(' - ').replace(/\(ATIVO\)|\(SUSPENSO\)|\(CANCELADO\)/g, '').trim();
+                                if(nomeReal) textoLinha += ` - ${nomeReal}`;
+                            }
+
+                            if (config.copiarStatus) {
+                                const matchStatus = nomeFull.match(/\((ATIVO|CANCELADO|SUSPENSO)\)/i);
+                                const status = matchStatus ? matchStatus[1] : "Indefinido";
+                                textoLinha += ` (${status})`;
+                            }
+
+                            if (config.copiarNomeRede) {
+                                const rede = (dados.rede?.rede || "").replace(/Card \d+ Porta \d+$/i, "").trim();
+                                if(rede) textoLinha += ` || ${rede}`;
+                            }
+
+                            linhasParaCopiar.push(textoLinha);
+                        }
+                    });
+                });
+
+                if (linhasParaCopiar.length > 0) {
+                    this.copyTextSimple(linhasParaCopiar.join("\n"), "Lista copiada!");
+                } else {
+                    this.showToastGeneric("Nenhum cliente para copiar (verifique filtros).", "#ffeaa7");
+                }
             };
 
             const btnClose = document.createElement('button');
@@ -2189,21 +2366,33 @@
         },
 
         copyTextSimple: function(text, msg) {
+            // Cria um elemento textarea invisível
             const textArea = document.createElement("textarea");
             textArea.value = text;
+
+            // Garante que o elemento não seja visível mas faça parte do DOM
             textArea.style.position = "fixed";
             textArea.style.left = "-9999px";
+            textArea.style.top = "0";
             document.body.appendChild(textArea);
+
             textArea.focus();
             textArea.select();
 
             try {
-                document.execCommand('copy');
-                this.showToastGeneric(msg);
+                // Comando antigo que funciona em HTTP
+                const successful = document.execCommand('copy');
+                if (successful) {
+                    this.showToastGeneric(msg || "Copiado!", "#00b894");
+                } else {
+                    this.showToastGeneric("Falha ao copiar.", "#ff7675");
+                }
             } catch (err) {
-                console.error(err);
+                console.error('Erro ao copiar:', err);
+                this.showToastGeneric("Erro ao copiar.", "#ff7675");
+            } finally {
+                document.body.removeChild(textArea);
             }
-            document.body.removeChild(textArea);
         },
 
         showToastGeneric: function(msg, color = 'var(--gg-accent)') {
