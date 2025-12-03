@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         New - GeoGrid Tools
 // @namespace    http://tampermonkey.net/
-// @version      5.8
+// @version      5.9
 // @description  Ferramentas avançadas para GeoGrid Maps + OCR (Layout de Clientes Clássico)
 // @author       Jhon
 // @match        http://172.16.6.57/geogrid/aconcagua/*
@@ -121,7 +121,7 @@
         equipamentosOrdem = [];
         infoClientes = {};
         ultimaAPI = null;
-        console.log("[GeoGrid Tools] Data State Reset.");
+        //console.log("[GeoGrid Tools] Data State Reset.");
 
         if (typeof UIManager !== 'undefined') {
             // Reseta a trava de redimensionamento e o estado visual
@@ -164,6 +164,80 @@
                 }
             }
         },
+        "carregaTipoPadrao": (data) => {
+                console.log("[HUD Debug] Iniciando (Modo Busca Global) para:", data);
+
+                const fabricante = (data?.fabricante || "").toLowerCase();
+                const tipo = (data?.tipo || "").toLowerCase();
+                const codigoPoste = window.ultimoCodigoPoste || "00000";
+
+                let codigoParaInserir = null;
+                let seletorEspecifico = null;
+
+                // --- 1. Definição das Regras ---
+                if (fabricante.includes("overtek") && (tipo.includes("atendimento") || tipo.includes("splitter"))) {
+                    codigoParaInserir = `cx em. ${codigoPoste}`;
+                    seletorEspecifico = '.template-caixa input[name="codigo"]';
+                }
+                else if ((fabricante.includes("furukawa") || tipo.includes("terminal")) && tipo.includes("teste")) {
+                    codigoParaInserir = `cx at. ${codigoPoste}`;
+                    seletorEspecifico = '.template-terminal input[name="codigo"]';
+                }
+                else {
+                    // Fallbacks Genéricos
+                    if (tipo.includes("emenda") || tipo.includes("ceo") || (fabricante.includes("overtek") && tipo.includes("caixa"))) {
+                        codigoParaInserir = `cx em. ${codigoPoste}`;
+                        seletorEspecifico = '.template-caixa input[name="codigo"]';
+                    } else if (tipo.includes("atendimento") || tipo.includes("terminal") || tipo.includes("splitter")) {
+                        codigoParaInserir = `cx at. ${codigoPoste}`;
+                        seletorEspecifico = '.template-terminal input[name="codigo"]';
+                    }
+                }
+
+                if (!codigoParaInserir) return;
+
+                // Se não tiver seletor específico, usa um genérico perigoso (último recurso)
+                const seletorFinal = seletorEspecifico || 'input[name="codigo"]';
+
+                console.log(`[HUD Debug] Procurando globalmente por: "${seletorFinal}" para inserir "${codigoParaInserir}"`);
+
+                // --- 2. BUSCA GLOBAL (setInterval) ---
+                let tentativas = 0;
+                const intervaloVerificacao = setInterval(() => {
+                    tentativas++;
+
+                    // Busca TODOS os inputs que batem com o seletor na página inteira
+                    const candidatos = document.querySelectorAll(seletorFinal);
+
+                    for (const input of candidatos) {
+                        // Verifica se o input está VISÍVEL na tela (offsetParent não é null)
+                        // E se está dentro de um painel de cadastro (segurança extra)
+                        if (input.offsetParent !== null && input.closest('.painel-acessorio-cadastro')) {
+
+                            console.log("[HUD Debug] Input VISÍVEL encontrado! Preenchendo...");
+
+                            input.value = codigoParaInserir;
+
+                            // Dispara eventos para garantir que o site salve
+                            input.dispatchEvent(new Event('input', { bubbles: true }));
+                            input.dispatchEvent(new Event('change', { bubbles: true }));
+
+                            // Tenta focar
+                            try { input.focus(); } catch(e){}
+
+                            clearInterval(intervaloVerificacao); // SUCESSO! Para o loop.
+                            return;
+                        }
+                    }
+
+                    // Encerra após 5 segundos (50 tentativas)
+                    if (tentativas > 50) {
+                        console.log("[HUD Debug] Timeout Global: Input não apareceu visível.");
+                        clearInterval(intervaloVerificacao);
+                    }
+
+                }, 100);
+            },
         "carregarPortas.php": (data, url, bodyParams) => {
             const equipId = bodyParams?.get("codigo");
             if (!equipId) return;
@@ -978,11 +1052,14 @@
 
                 /* Linha do Cliente (Estilo v4.6 Restaurado) */
                 .gg-client-row {
-                    padding: 3px 0;
+                    padding: 3px 6px; /* Um pouco mais de espaço lateral */
                     cursor: pointer;
                     border-radius: 3px;
                     transition: background-color 0.2s;
                     font-size: 13px;
+                    white-space: nowrap; /* IMPEDE A QUEBRA DE LINHA */
+                    overflow: hidden;    /* Segurança */
+                    text-overflow: ellipsis; /* Três pontinhos se estourar o máximo da tela */
                 }
                 .gg-client-row.clicked {
                     opacity: 0.5;
@@ -1699,17 +1776,13 @@
             return name ? name.replace(/^\d+\s*-\s*/, "").trim().toLowerCase() : "";
         },
 
-        // --- RENDER LOGIC (RESTAURADO ESTILO v4.6) ---
+        /// --- RENDER LOGIC (ESTILO v4.6 CORRIGIDO + CLASSES PARA CÓPIA) ---
         renderClientList: function() {
             const panel = document.getElementById(this.config.mainPanelId);
             const contentDiv = panel ? panel.querySelector('.gg-panel-content') : null;
             if (!contentDiv) return;
 
             contentDiv.innerHTML = '';
-
-            // --- ADICIONAR BARRA DE PESQUISA (Se a lógica pedir, mas geralmente no render da v5.5 a barra é fixa no painel) ---
-            // Como na v5.5 a barra de pesquisa é parte da estrutura do painel e não do contentDiv,
-            // não precisamos recriá-la aqui. Apenas renderizamos a lista.
 
             // Normalização de nomes
             const capitalizarRede = nome => nome.replace(/\b\w/g, l => l.toUpperCase());
@@ -1734,7 +1807,7 @@
                 const nomeRedeEquipamento = equipamento.nomeRede;
                 let redeFinal = isDemanda ? nomeRedeEquipamento : (capitalizarRede(this.normalizeNetworkName(nomeRedeEquipamento)) || "Rede Desconhecida");
 
-                // --- CRIAÇÃO DO CABEÇALHO DA REDE (ESTILO ANTIGO - LISTA CORRIDA) ---
+                // --- CRIAÇÃO DO CABEÇALHO DA REDE ---
                 const redeDiv = document.createElement("div");
                 redeDiv.className = "gg-network-header";
 
@@ -1758,7 +1831,6 @@
 
                     btnSinalRede.onclick = (e) => {
                         e.stopPropagation();
-                        // 1. Se o usuário segurar CTRL, coletamos TODOS os clientes ativos do painel
                         if (e.ctrlKey) {
                             const idsTotais = [];
                             ordemFinal.forEach(eqId => {
@@ -1774,13 +1846,12 @@
 
                             if (idsTotais.length > 0) {
                                 this.showToastGeneric(`Modo Turbo: Verificando sinal de ${idsTotais.length} clientes...`, "#00b894");
-                                this.verifySignal(null, false, btnSinalRede, idsTotais); // Passa ids manuais
+                                this.verifySignal(null, false, btnSinalRede, idsTotais);
                             } else {
                                 this.showToastGeneric('Nenhum cliente ativo encontrado.', "#ffeaa7");
                             }
                         } else {
-                            // 2. Comportamento Padrão: Verifica apenas esta rede específica
-                            this.verifySignal(null, false, btnSinalRede, idsAtivosDestaRede); // Passa ids manuais
+                            this.verifySignal(null, false, btnSinalRede, idsAtivosDestaRede);
                         }
                     };
                     redeDiv.appendChild(btnSinalRede);
@@ -1788,7 +1859,7 @@
                 contentDiv.appendChild(redeDiv);
                 hasContent = true;
 
-                // --- LOOP DE CLIENTES (ESTILO ANTIGO - LISTA CORRIDA) ---
+                // --- LOOP DE CLIENTES ---
                 const clientesDoEquipamento = [...equipamento.clientes].sort((a, b) => {
                     const portaA = parseInt(a.porta) || Infinity;
                     const portaB = parseInt(b.porta) || Infinity;
@@ -1799,22 +1870,19 @@
                     // Filtro da barra de pesquisa
                     if (this.searchQuery) {
                         const termo = this.searchQuery;
-                        // Procura no contrato ou nome (se disponível)
                         let match = false;
-                        if (conexao.id && conexao.id.includes(termo)) match = true;
-                        if (conexao.porta && conexao.porta.includes(termo)) match = true;
+                        if (conexao.id && String(conexao.id).includes(termo)) match = true;
+                        if (conexao.porta && String(conexao.porta).includes(termo)) match = true;
                         if (infoClientes[conexao.id]?.data.registro.nome.toLowerCase().includes(termo)) match = true;
-                        if (!match) return; // Pula se não bater com a busca
+                        if (!match) return;
                     }
 
                     const li = document.createElement("div");
                     li.className = 'gg-client-row';
-                    // Adiciona ID para facilitar atualização de sinal
                     li.dataset.clientId = conexao.id || "";
 
                     li.onclick = () => {
                         li.classList.toggle('clicked');
-                        // Lógica de "tachado"
                         if (li.classList.contains('clicked')) {
                             li.style.textDecoration = "line-through";
                             li.style.opacity = "0.6";
@@ -1825,36 +1893,41 @@
                     };
 
                     const clienteDetalhes = infoClientes[conexao.id];
-                    let texto = "Cliente desconhecido";
                     let contrato = "";
                     let status = "NAO-IDENTIFICADO";
                     let nomeDisplay = "";
                     let redeDisplay = "";
                     let statusColorClass = "status-NAO-IDENTIFICADO";
 
-                    if (clienteDetalhes) {
-                        texto = clienteDetalhes.data.registro?.nome || "Cliente desconhecido";
+                    // --- TRATAMENTO DE ID "-1" (CLIENTE DESCONHECIDO) ---
+                    if (conexao.id === "-1" || conexao.id === -1) {
+                        contrato = "Cliente Desconhecido";
+                        status = "NAO-IDENTIFICADO";
+                    }
+                    // --- TRATAMENTO DE CLIENTES NORMAIS ---
+                    else if (clienteDetalhes) {
+                        const texto = clienteDetalhes.data.registro?.nome || "Cliente desconhecido";
                         let partes = texto.split(" - ");
-                        contrato = partes[1]?.trim() || "";
+
+                        contrato = partes[1]?.trim() || conexao.id || "Erro";
+
                         let matchStatus = texto.match(/\((ATIVO|CANCELADO|SUSPENSO|NAO IDENTIFICADO)\)/i);
                         status = matchStatus ? matchStatus[1].toUpperCase().replace(' ', '-') : "NAO-IDENTIFICADO";
 
-                        // Cores
                         if(status === 'ATIVO') statusColorClass = 'status-ATIVO';
                         else if(status === 'CANCELADO') statusColorClass = 'status-CANCELADO';
                         else if(status === 'SUSPENSO') statusColorClass = 'status-SUSPENSO';
 
-                        // Nome
                         if (window.__hudState__.exibirNomeCliente) {
                             let nomeCliente = "";
                             if (partes.length > 2) {
                                 let ultimasPartes = partes.slice(2).join(" - ");
                                 nomeCliente = ultimasPartes.replace(/\s*\((ATIVO|CANCELADO|SUSPENSO|NAO IDENTIFICADO)\)$/i, "").trim();
                             }
-                            if(nomeCliente) nomeDisplay = `<span style="opacity:0.8; font-weight:normal"> - ${nomeCliente}</span>`;
+                            // [CORREÇÃO] Adicionada a classe 'hud-client-name' para o copiado funcionar
+                            if(nomeCliente) nomeDisplay = `<span class="hud-client-name" style="opacity:0.8; font-weight:normal"> - ${nomeCliente}</span>`;
                         }
 
-                        // Rede (se divergente)
                         let redeCliente = (clienteDetalhes.data.rede?.rede || "").replace(/Card \d+ Porta \d+$/i, "").trim();
                         const redeClienteNorm = this.normalizeNetworkName(redeCliente);
                         let mesmaRede = isDemanda ? true : todasRedesNorm.some(r => redeClienteNorm.includes(r));
@@ -1862,22 +1935,17 @@
                         if (!mesmaRede && window.__hudState__.destacarRedesDivergentes) {
                             li.classList.add('network-divergent');
                         }
-                        if(redeCliente) redeDisplay = ` || <span style="opacity:0.7">${redeCliente}</span>`;
+                        // [CORREÇÃO] Adicionada a classe 'network'
+                        if(redeCliente) redeDisplay = ` || <span class="network" style="opacity:0.7">${redeCliente}</span>`;
 
                     } else if (conexao.id) {
-                        // Cliente ainda carregando ou sem dados
                         contrato = conexao.id;
-                        texto = "Carregando...";
-                    } else {
-                        // Porta Vazia
-                        texto = "Livre";
                     }
 
                     const portaDisplay = conexao.obs
                         ? `<img src="https://img.icons8.com/fluency/48/error--v1.png" style="width:14px;height:14px;vertical-align:middle;" title="${conexao.obs}">`
                         : (conexao.porta || '?');
 
-                    // --- CACHE DE SINAL (Injetado aqui se existir) ---
                     let sinalDisplay = '';
                     if (conexao.id && this.currentBox.signalCache && this.currentBox.signalCache[conexao.id]) {
                         const cache = this.currentBox.signalCache[conexao.id];
@@ -1887,12 +1955,9 @@
                     if (contrato) {
                         li.innerHTML = `
                             <span class="port">${portaDisplay}:</span>
-                            <span class="contract">${contrato}</span>${nomeDisplay}
-                            <span class="${statusColorClass}">(${status.charAt(0) + status.slice(1).toLowerCase().replace('-', ' ')})</span>
-                            ${redeDisplay}
-                        `;
+                            <span class="contract">${contrato}</span>${nomeDisplay} <span class="${statusColorClass}">(${status.charAt(0) + status.slice(1).toLowerCase().replace('-', ' ')})</span>${redeDisplay}`;
                         contentDiv.appendChild(li);
-                        // Adiciona a linha de sinal (se houver)
+
                         if(sinalDisplay) {
                             const sd = document.createElement('div');
                             sd.innerHTML = sinalDisplay;
@@ -2104,24 +2169,53 @@
 
             const limitHeight = window.__hudState__.limitarAlturaPainel;
 
-            // 1. Reseta a altura para 'auto' para o navegador calcular o scrollHeight real do conteúdo
-            // Importante: salvamos a largura para evitar flickers visuais estranhos
-            const currentWidth = panel.style.width;
-            panel.style.height = 'auto';
-            panel.style.width = currentWidth;
+            // --- 1. AJUSTE DE LARGURA (Horizontal) ---
+            // Reseta para 'auto' para o navegador calcular a largura natural do conteúdo
+            const currentLeft = panel.offsetLeft; // Salva posição atual
+            panel.style.width = 'auto';
 
-            // 2. Calcula altura necessária
+            // Mede a largura real necessária
+            const naturalWidth = contentDiv.scrollWidth;
+
+            // Define limites
+            const minWidth = 350;
+            const maxWidth = window.innerWidth * 0.85;
+
+            // Largura final calculada (+25px de buffer para scrollbar)
+            const finalWidth = Math.min(Math.max(naturalWidth + 25, minWidth), maxWidth);
+
+            // --- CORREÇÃO DE POSIÇÃO (Evitar sair da tela à direita) ---
+            const viewportWidth = window.innerWidth;
+
+            // Verifica se a (Posição Atual + Nova Largura) estoura a tela
+            if (currentLeft + finalWidth > viewportWidth) {
+                // Calcula nova posição Esquerda (Largura da Tela - Nova Largura - Margem de 15px)
+                let newLeft = viewportWidth - finalWidth - 15;
+
+                // Segurança para não sair pela esquerda da tela também (se for muito largo)
+                if (newLeft < 10) newLeft = 10;
+
+                panel.style.left = newLeft + 'px';
+            }
+
+            // Aplica a largura
+            panel.style.width = finalWidth + 'px';
+
+            // --- 2. AJUSTE DE ALTURA (Vertical) ---
+            // Reseta a altura para 'auto'
+            panel.style.height = 'auto';
+
+            // Calcula altura necessária
             const headerHeight = header.offsetHeight;
             const contentHeight = contentDiv.scrollHeight;
-            const paddingBuffer = 24; // Um pouco mais de respiro
+            const paddingBuffer = 24;
 
             const desiredHeight = headerHeight + contentHeight + paddingBuffer;
 
-            // 3. Aplica limites (Mínimo 470px solicitado)
-            const minHeight = 470;
+            // Aplica limites verticais
+            const minHeight = 70;
             const maxHeight = limitHeight ? 560 : (window.innerHeight - 50);
 
-            // Lógica: Pega o maior entre (Desejado e Mínimo), mas trava no Máximo
             const finalHeight = Math.min(Math.max(desiredHeight, minHeight), maxHeight);
 
             panel.style.height = finalHeight + 'px';
@@ -2262,17 +2356,17 @@
             const rows = contentDiv.querySelectorAll('.gg-client-row');
             const lines = [];
 
-            // --- LÓGICA DE CÓPIA DO V4.6 ---
             rows.forEach(row => {
                 const contractEl = row.querySelector('.contract');
-                const nameEl = row.querySelector('.hud-client-name'); // Pode não existir se estiver escondido
+
+                // [CORREÇÃO] Se não tem elemento de contrato, é uma vaga "Livre". Ignora.
+                if (!contractEl) return;
+
+                const nameEl = row.querySelector('.hud-client-name');
                 const statusEl = row.querySelector('[class*="status-"]');
-                const redeEl = row.querySelector('.network'); // Pode não existir
+                const redeEl = row.querySelector('.network');
 
-                let contractText = contractEl ? contractEl.textContent.trim() : "Desconhecido";
-
-                // Se o contrato for "Cliente Desconhecido", e estivermos copiando, mantemos
-                // Mas a lógica do v4.6 era:
+                let contractText = contractEl.textContent.trim();
 
                 // Verifica filtro de "Apenas Cancelados"
                 if (window.__hudState__.somenteCancelados) {
@@ -2963,11 +3057,12 @@
             document.addEventListener('hud:structureLoad', (e) => {
                 const data = JSON.parse(e.detail);
 
-                // NOVO: Resetar flag de redimensionamento manual para a nova caixa
+                // Resetar flag de redimensionamento manual para a nova caixa
                 this.isManuallyResized = false;
 
                 this.currentBox.title = data.titulo;
                 this.currentBox.data = data.equipamentos;
+                this.currentBox.signalCache = {}; // <--- ADICIONADO: Limpa o sinal antigo
 
                 // Renderiza (se estiver fechado, apenas atualiza o HTML interno)
                 this.renderClientList();
