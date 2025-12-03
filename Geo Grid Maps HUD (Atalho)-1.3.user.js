@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         New - GeoGrid Tools
 // @namespace    http://tampermonkey.net/
-// @version      5.7
-// @description  Ferramentas avançadas para GeoGrid Maps + OCR
+// @version      5.8
+// @description  Ferramentas avançadas para GeoGrid Maps + OCR (Layout de Clientes Clássico)
 // @author       Jhon
 // @match        http://172.16.6.57/geogrid/aconcagua/*
 // @run-at       document-end
@@ -10,8 +10,6 @@
 // @grant        GM_xmlhttpRequest
 // @grant        GM_setClipboard
 // @require      https://unpkg.com/tesseract.js@v4.0.3/dist/tesseract.min.js
-// @downloadURL https://github.com/Jhondbs/Geogrid-HUD/raw/refs/heads/main/Geo%20Grid%20Maps%20HUD%20(Atalho)-1.3.user.js
-// @updateURL https://github.com/Jhondbs/Geogrid-HUD/raw/refs/heads/main/Geo%20Grid%20Maps%20HUD%20(Atalho)-1.3.user.js
 // ==/UserScript==
 
 (function() {
@@ -146,7 +144,7 @@
                 const metodo = bodyParams.get("metodo");
                 const codigo = bodyParams.get("codigo");
 
-                // Captura ID do Pai (ex: Caixa onde estamos clicando)
+                // Captura ID do Pai (ex: Caixa ou Armário onde estamos clicando)
                 if (controlador === 'diagrama' && metodo === 'carregarCabosEquipamentos' && codigo) {
                     ultimoCodigoEquipamentoPai = codigo;
                 }
@@ -225,54 +223,6 @@
                 infoClientes[idCliente] = { id: idCliente, data: data };
                 triggerRender();
             }
-        },
-        "carregaTipoPadrao": (data, url, bodyParams) => {
-            const fabricante = data?.fabricante;
-            const tipo = data?.tipo;
-            let codigoParaInserir = null;
-            let seletorDoInput = null;
-
-            // Usa o último poste capturado pelo script (salvo em window.ultimoCodigoPoste)
-            const codigoPoste = window.ultimoCodigoPoste || "00000";
-
-            // 1. Define o padrão de nome baseado no tipo retornado
-            if (fabricante === "Overtek" && tipo === "Caixa de Atendimento (Splitter)") {
-                codigoParaInserir = `cx em. ${codigoPoste}`;
-                seletorDoInput = '.template-caixa input[name="codigo"]';
-            } else if (fabricante === "Furukawa" && tipo === "terminal de teste") {
-                codigoParaInserir = `cx at. ${codigoPoste}`;
-                seletorDoInput = '.template-terminal input[name="codigo"]';
-            }
-
-            if (!codigoParaInserir) return;
-
-            // 2. Cria um observador para esperar a janela de cadastro abrir no DOM
-            const observer = new MutationObserver((mutationsList, obs) => {
-                for (const mutation of mutationsList) {
-                    if (mutation.type === 'childList') {
-                        // Procura pela janela de cadastro de acessório
-                        const painel = document.querySelector('.padrao-painel-flutuante.painel-acessorio-cadastro');
-
-                        if (painel && painel.style.display !== 'none') {
-                            // Tenta achar o input específico
-                            const inputCodigo = painel.querySelector(seletorDoInput) || painel.querySelector('input[name="codigo"]');
-
-                            if (inputCodigo) {
-                                inputCodigo.value = codigoParaInserir;
-                                inputCodigo.focus(); // Foca no campo para facilitar
-                                obs.disconnect(); // Para de observar
-                                return;
-                            }
-                        }
-                    }
-                }
-            });
-
-            // Inicia a observação
-            observer.observe(document.body, { childList: true, subtree: true });
-
-            // Segurança: Desliga o observador após 3 segundos se a janela não abrir
-            setTimeout(() => observer.disconnect(), 3000);
         }
     };
 
@@ -713,125 +663,6 @@
         }, true); // Use capture para garantir prioridade sobre o listener nativo
     }
 
-    // --- FUNÇÕES DE COLAR COORDENADAS E LINKS ---
-
-    function resolveShortlinkWithGM(url) {
-        return new Promise((resolve, reject) => {
-            try {
-                let target = url;
-                if (!/^https?:\/\//i.test(target)) target = 'https://' + target;
-
-                GM_xmlhttpRequest({
-                    method: "GET",
-                    url: target,
-                    headers: { "User-Agent": "Mozilla/5.0 (Tampermonkey)" },
-                    onload(response) {
-                        try {
-                            const final = response.finalUrl || response.responseURL || null;
-                            const html = response.responseText || '';
-                            if (final) return resolve({ url: final, html });
-
-                            const meta = html.match(/<meta\s+http-equiv=["']refresh["']\s+content=["'][^;]+;\s*url=([^"']+)["']/i);
-                            if (meta) return resolve({ url: meta[1], html });
-
-                            resolve({ url: target, html });
-                        } catch (e) { reject(e); }
-                    },
-                    onerror(err) { reject(err); },
-                    ontimeout(err) { reject(err); },
-                });
-            } catch (e) { reject(e); }
-        });
-    }
-
-    function extractCoords(text) {
-        if (!text) return null;
-        let m;
-        // Padrões do Google Maps e Lat/Lon
-        if (m = text.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/)) return { lat: m[1], lon: m[2] };
-        if (m = text.match(/@(-?\d+\.\d+),\s*(-?\d+\.\d+)/)) return { lat: m[1], lon: m[2] };
-        if (m = text.match(/[?&]q=(-?\d+\.\d+),\s*(-?\d+\.\d+)/)) return { lat: m[1], lon: m[2] };
-        if (m = text.match(/[?&]ll=(-?\d+\.\d+),\s*(-?\d+\.\d+)/)) return { lat: m[1], lon: m[2] };
-        const nums = text.match(/-?\d+\.\d+/g);
-        if (nums && nums.length >= 2) return { lat: nums[0], lon: nums[1] };
-        return null;
-    }
-
-    function iniciarListenerDeColarCoordenadas() {
-        document.body.addEventListener('paste', async function(e) {
-            // Só age se colar no input de latitude
-            if (!e.target || !e.target.matches || !e.target.matches('input[name="latitude"]')) return;
-
-            const latInput = e.target;
-            // Tenta achar o container pai para pegar o campo de longitude e o botão OK
-            // No Geogrid novo, geralmente estão próximos
-            const commonParent = latInput.closest('div') || latInput.parentElement;
-            if (!commonParent) return;
-
-            // Busca input longitude e botão OK no mesmo container
-            const lonInput = commonParent.parentElement.querySelector('input[name="longitude"]');
-            const okButton = commonParent.parentElement.querySelector('button[name="ok"]') ||
-                             Array.from(document.querySelectorAll('button')).find(b => b.textContent.includes('Ok') && commonParent.parentElement.contains(b));
-
-            if (!lonInput) return;
-
-            const pastedText = (e.clipboardData || window.clipboardData).getData('text') || '';
-            const raw = pastedText.trim();
-            if (!raw) return;
-
-            const preencher = (lat, lon) => {
-                if (!lat || !lon) return;
-                e.preventDefault(); // Impede a colagem do texto original
-                latInput.value = lat;
-                lonInput.value = lon;
-                // Dispara eventos para o site reconhecer a mudança
-                latInput.dispatchEvent(new Event('change'));
-                lonInput.dispatchEvent(new Event('change'));
-
-                if (okButton) okButton.focus(); // Foca no OK para facilitar
-
-                if(typeof UIManager !== 'undefined') UIManager.showToastGeneric("Coordenadas coladas!", "#00b894");
-            };
-
-            // 1. Verifica link do Google Maps
-            const shortlinkPattern = /\b(?:https?:\/\/)?(?:maps\.app\.goo\.gl|goo\.gl\/maps|goo\.gl)\//i;
-            const longlinkPattern  = /\bhttps?:\/\/(?:www\.)?google\.[^\/]+\/maps/i;
-
-            if (shortlinkPattern.test(raw) || longlinkPattern.test(raw)) {
-                e.preventDefault();
-                latInput.value = "Lendo link...";
-
-                try {
-                    let resolved = { url: raw, html: '' };
-                    if (shortlinkPattern.test(raw)) {
-                        resolved = await resolveShortlinkWithGM(raw);
-                    }
-
-                    let coords = extractCoords(resolved.url || raw);
-                    if (!coords && resolved.html) coords = extractCoords(resolved.html);
-
-                    if (coords) {
-                        preencher(coords.lat, coords.lon);
-                    } else {
-                        latInput.value = "Link não reconhecido";
-                    }
-                } catch (err) {
-                    console.error("Erro link:", err);
-                    latInput.value = "Erro";
-                }
-                return;
-            }
-
-            // 2. Verifica coordenadas brutas (ex: -23.55, -46.66)
-            // Aceita espaço, vírgula ou ponto e vírgula como separador
-            const coordMatch = raw.match(/^(-?\d+\.\d+)[\s,;]+(-?\d+\.\d+)$/);
-            if (coordMatch) {
-                preencher(coordMatch[1], coordMatch[2]);
-            }
-
-        }, true); // Use capture
-    }
-
     /**
      * =======================================================================================
      * MODULE: UI MANAGER
@@ -867,7 +698,6 @@
             this.bindGlobalEvents();
             this.applyTheme();
             iniciarListenerDePesquisaRapida();
-            iniciarListenerDeColarCoordenadas();
             console.log("[GeoGrid Tools] UI Initialized.");
         },
 
@@ -896,6 +726,9 @@
                     --gg-input-bg: transparent;
                     --gg-scrollbar: #636e72;
                     --gg-divergent: rgba(224, 108, 117, 0.2);
+                    --gg-green: #98c379;
+                    --gg-red: #e06c75;
+                    --gg-orange: #d19a66;
                 }
                 body.gg-light-mode {
                     --gg-bg: #ffffff;
@@ -908,6 +741,9 @@
                     --gg-scrollbar: #b2bec3;
                     --gg-accent: #1363a1;
                     --gg-divergent: rgba(215, 58, 73, 0.15);
+                    --gg-green: #28a745;
+                    --gg-red: #d73a49;
+                    --gg-orange: #f66a0a;
                 }
 
                 /* --- ESTILOS DO NOVO PAINEL MAC (DUAS COLUNAS) --- */
@@ -1136,16 +972,74 @@
                 }
                 .gg-toggle-switch:checked::after { left: 16px; }
 
-                /* --- ESTILOS DE LISTA --- */
+                /* --- ESTILOS DE LISTA (CLÁSSICO) --- */
                 .strikethrough { text-decoration: line-through; opacity: 0.6; }
                 .network-divergent { background-color: var(--gg-divergent) !important; }
-                .gg-group-header {
-                    padding: 6px 10px; background: var(--gg-header-bg); font-weight: 600;
-                    font-size: 12px; color: var(--gg-text); border-left: 3px solid var(--gg-accent);
-                    cursor: pointer; display: flex; justify-content: space-between; align-items: center;
+
+                /* Linha do Cliente (Estilo v4.6 Restaurado) */
+                .gg-client-row {
+                    padding: 3px 0;
+                    cursor: pointer;
+                    border-radius: 3px;
+                    transition: background-color 0.2s;
+                    font-size: 13px;
                 }
-                .gg-group-header:hover { background-color: var(--gg-hover); }
-                .gg-group-content { transition: max-height 0.3s ease; }
+                .gg-client-row.clicked {
+                    opacity: 0.5;
+                    text-decoration: line-through;
+                }
+                .gg-client-row:hover {
+                    background-color: var(--gg-hover);
+                }
+                .gg-client-row .port { font-size: 0.9em; color: var(--gg-accent); min-width: 20px; display: inline-block; }
+                .gg-client-row .contract { font-weight: 600; color: var(--gg-text); }
+                .gg-client-row .status-ATIVO { color: var(--gg-green); }
+                .gg-client-row .status-CANCELADO { color: var(--gg-red); }
+                .gg-client-row .status-SUSPENSO { color: var(--gg-orange); }
+                .gg-client-row .status-NAO-IDENTIFICADO { color: var(--gg-text); }
+                .gg-client-row .status-ATIVO-OFFLINE { color: #993399; }
+
+                /* Cabeçalho da Rede (Estilo v4.6 Restaurado) */
+                .gg-network-header {
+                    margin-top: 8px;
+                    padding-top: 8px;
+                    border-top: 1px solid var(--gg-border);
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                }
+                .gg-network-header strong { color: var(--gg-accent); font-size: 13px; }
+
+                /* Botão de Sinal Pequeno (na linha da rede) */
+                .gg-btn-small {
+                    background: transparent;
+                    border: 1px solid var(--gg-border);
+                    color: var(--gg-text);
+                    padding: 2px 6px;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    font-size: 11px;
+                    margin-left: auto; /* Empurra para direita */
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 4px;
+                    transition: all 0.2s;
+                    vertical-align: middle;
+                }
+                .gg-btn-small:hover {
+                    background-color: var(--gg-accent);
+                    color: white;
+                    border-color: var(--gg-accent);
+                }
+                .gg-btn-small svg {
+                    width: 12px;
+                    height: 12px;
+                    fill: currentColor;
+                }
+                .gg-btn-small:disabled {
+                    opacity: 0.6;
+                    cursor: not-allowed;
+                }
 
                 /* ==========================================================================
                    NOVO: ESTILOS DO CADASTRO DE EQUIPAMENTO (MODERNO / FLAT DESIGN)
@@ -1805,7 +1699,7 @@
             return name ? name.replace(/^\d+\s*-\s*/, "").trim().toLowerCase() : "";
         },
 
-        // --- RENDER LOGIC (v3.3.0 - Final Version) ---
+        // --- RENDER LOGIC (RESTAURADO ESTILO v4.6) ---
         renderClientList: function() {
             const panel = document.getElementById(this.config.mainPanelId);
             const contentDiv = panel ? panel.querySelector('.gg-panel-content') : null;
@@ -1813,215 +1707,202 @@
 
             contentDiv.innerHTML = '';
 
-            // Configurações
-            const showName = window.__hudState__.exibirNomeCliente;
-            const highlightDivergent = window.__hudState__.destacarRedesDivergentes;
+            // --- ADICIONAR BARRA DE PESQUISA (Se a lógica pedir, mas geralmente no render da v5.5 a barra é fixa no painel) ---
+            // Como na v5.5 a barra de pesquisa é parte da estrutura do painel e não do contentDiv,
+            // não precisamos recriá-la aqui. Apenas renderizamos a lista.
 
-            // 1. Mapeamento Global de Redes (Para verificar divergência corretamente)
-            const validNetworksInBox = new Set();
-            if (ultimaAPI?.dados?.nome_rede) {
-                const r = this.normalizeNetworkName(ultimaAPI.dados.nome_rede);
-                if(r) validNetworksInBox.add(r);
+            // Normalização de nomes
+            const capitalizarRede = nome => nome.replace(/\b\w/g, l => l.toUpperCase());
+            const todasRedesNorm = [...new Set(Object.values(equipamentosInfo).map(e => e.nomeRede))]
+                .map(this.normalizeNetworkName)
+                .filter(Boolean);
+
+            const ordemFinal = [...equipamentosOrdem];
+            // Ordena o "Por Demanda" para o topo
+            if (equipamentosInfo['__porDemanda__'] && !ordemFinal.includes('__porDemanda__')) {
+                ordemFinal.unshift('__porDemanda__');
             }
-            equipamentosOrdem.forEach(id => {
-                const eq = equipamentosInfo[id];
-                if (eq && eq.nomeRede) {
-                    const r = this.normalizeNetworkName(eq.nomeRede);
-                    if(r) validNetworksInBox.add(r);
-                }
-            });
-
-            // Ordenação Visual (Por Demanda sempre no topo)
-            const ordemVisual = [...equipamentosOrdem].sort((a, b) => {
-                if (a === '__porDemanda__') return -1;
-                if (b === '__porDemanda__') return 1;
-                return 0;
-            });
 
             let hasContent = false;
 
-            ordemVisual.forEach(equipId => {
-                const equip = equipamentosInfo[equipId];
-                if (!equip) return;
+            // --- LOOP PRINCIPAL: Equipamentos/Redes ---
+            ordemFinal.forEach(equipId => {
+                const equipamento = equipamentosInfo[equipId];
+                if (!equipamento || equipamento.clientes.length === 0) return;
 
                 const isDemanda = equipId === '__porDemanda__';
-                const qtdClientes = equip.clientes ? equip.clientes.length : 0;
+                const nomeRedeEquipamento = equipamento.nomeRede;
+                let redeFinal = isDemanda ? nomeRedeEquipamento : (capitalizarRede(this.normalizeNetworkName(nomeRedeEquipamento)) || "Rede Desconhecida");
 
-                // Filtros de Exibição (Vazios ou muito pequenos, exceto Demanda)
-                if (!equip.clientes || qtdClientes === 0) return;
-                if (!isDemanda && qtdClientes < 8) return;
+                // --- CRIAÇÃO DO CABEÇALHO DA REDE (ESTILO ANTIGO - LISTA CORRIDA) ---
+                const redeDiv = document.createElement("div");
+                redeDiv.className = "gg-network-header";
 
+                const tituloRede = document.createElement("strong");
+                tituloRede.innerHTML = `📡 ${redeFinal}`;
+                redeDiv.appendChild(tituloRede);
+
+                // --- Botão de Sinal no Header da Rede ---
+                const idsAtivosDestaRede = equipamento.clientes
+                    .filter(c => {
+                        const dados = infoClientes[c.id];
+                        return dados && dados.data.registro?.nome.includes('ATIVO');
+                    })
+                    .map(c => c.id);
+
+                if (idsAtivosDestaRede.length > 0) {
+                    const btnSinalRede = document.createElement("button");
+                    btnSinalRede.className = "gg-btn-small";
+                    btnSinalRede.innerHTML = `<svg viewBox="0 0 24 24"><path d="M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9 9-4.03 9-9-4.03-9-9-9zm0 16c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7zm-1.5-6h3V8h-3v5z"/></svg> Sinal`;
+                    btnSinalRede.title = `Clique para verificar esta rede.\nSegure CTRL + Clique para verificar TODAS as redes da caixa.`;
+
+                    btnSinalRede.onclick = (e) => {
+                        e.stopPropagation();
+                        // 1. Se o usuário segurar CTRL, coletamos TODOS os clientes ativos do painel
+                        if (e.ctrlKey) {
+                            const idsTotais = [];
+                            ordemFinal.forEach(eqId => {
+                                const eq = equipamentosInfo[eqId];
+                                if (eq && eq.clientes) {
+                                    const ativosDoEquip = eq.clientes.filter(c => {
+                                        const dados = infoClientes[c.id];
+                                        return dados && dados.data.registro?.nome.includes('ATIVO');
+                                    }).map(c => c.id);
+                                    idsTotais.push(...ativosDoEquip);
+                                }
+                            });
+
+                            if (idsTotais.length > 0) {
+                                this.showToastGeneric(`Modo Turbo: Verificando sinal de ${idsTotais.length} clientes...`, "#00b894");
+                                this.verifySignal(null, false, btnSinalRede, idsTotais); // Passa ids manuais
+                            } else {
+                                this.showToastGeneric('Nenhum cliente ativo encontrado.', "#ffeaa7");
+                            }
+                        } else {
+                            // 2. Comportamento Padrão: Verifica apenas esta rede específica
+                            this.verifySignal(null, false, btnSinalRede, idsAtivosDestaRede); // Passa ids manuais
+                        }
+                    };
+                    redeDiv.appendChild(btnSinalRede);
+                }
+                contentDiv.appendChild(redeDiv);
                 hasContent = true;
 
-                const group = document.createElement('div');
-                group.style.cssText = "margin-bottom: 12px; background: rgba(0,0,0,0.1); border-radius: 4px; overflow: hidden;";
-
-                // --- HEADER DO EQUIPAMENTO ---
-                const groupHeader = document.createElement('div');
-                groupHeader.className = 'gg-group-header';
-                // Estilo flex para separar título do botão de sinal
-                groupHeader.style.cssText = `padding: 6px 10px; background: var(--gg-header-bg); font-weight: 600; font-size: 12px; color: var(--gg-text); border-left: 3px solid var(--gg-accent); display: flex; justify-content: space-between; align-items: center; cursor: pointer;`;
-
-                // Título + Quantidade
-                const nomeRedeEquip = equip.nomeRede || "Rede Desconhecida";
-                const labelQtd = isDemanda ? "Demanda" : `${qtdClientes} Portas`;
-                const titleSpan = document.createElement('span');
-                titleSpan.innerHTML = `${nomeRedeEquip} <span style="font-size:10px; opacity:0.7">(${labelQtd})</span>`;
-
-                // Botão de Sinal (Novo)
-                const btnSignal = document.createElement('button');
-                btnSignal.className = 'gg-header-btn';
-                btnSignal.title = "Verificar Sinal (Segure Ctrl para todos)";
-                btnSignal.innerHTML = '<svg viewBox="0 0 24 24"><path d="M1 9l2 2c4.4-4.4 11.6-4.4 16 0l2-2C16.8-2.8 7.2-2.8 1 9zm8 8l3 3 3-3c-1.6-1.6-4.4-1.6-6 0zm-4-4l2 2c2.2-2.2 5.8-2.2 8 0l2-2c-3.3-3.3-8.7-3.3-12 0z"/></svg>';
-                btnSignal.style.cssText = "padding: 2px; height: 20px; width: 20px; min-width: 20px;";
-
-                // Ação do Botão de Sinal
-                btnSignal.onclick = (e) => {
-                    e.stopPropagation(); // Impede que o grupo minimize ao clicar no botão
-                    const isBatch = e.ctrlKey; // Verifica se CTRL está pressionado
-                    this.verifySignal(equipId, isBatch, btnSignal);
-                };
-
-                // Montagem do Header
-                groupHeader.appendChild(titleSpan);
-                groupHeader.appendChild(btnSignal);
-
-                // Ação de Minimizar (Accordion)
-                groupHeader.onclick = (e) => {
-                    // Segurança extra: só minimiza se o alvo não for o botão
-                    if (e.target !== btnSignal && !btnSignal.contains(e.target)) {
-                        const c = group.querySelector('.gg-group-content');
-                        c.style.display = c.style.display === 'none' ? 'block' : 'none';
-                        // Reajusta altura do painel após animação
-                        setTimeout(() => this.adjustPanelHeight(), 50);
-                    }
-                };
-                group.appendChild(groupHeader);
-
-                // --- CONTEÚDO (LISTA DE CLIENTES) ---
-                const groupContent = document.createElement('div');
-                groupContent.className = 'gg-group-content';
-                group.appendChild(groupContent);
-
-                const clientesOrdenados = [...equip.clientes].sort((a,b) => {
-                    if (isDemanda) return 0;
-                    return parseInt(a.porta) - parseInt(b.porta);
+                // --- LOOP DE CLIENTES (ESTILO ANTIGO - LISTA CORRIDA) ---
+                const clientesDoEquipamento = [...equipamento.clientes].sort((a, b) => {
+                    const portaA = parseInt(a.porta) || Infinity;
+                    const portaB = parseInt(b.porta) || Infinity;
+                    return portaA - portaB;
                 });
 
-                clientesOrdenados.forEach(item => {
-                    const row = document.createElement('div');
-                    row.className = 'gg-client-row';
-                    // Adiciona ID ao dataset para facilitar atualização individual via DOM
-                    row.dataset.clientId = item.id || "";
-                    row.style.cssText = "display: flex; align-items: center; padding: 6px 10px; border-bottom: 1px solid rgba(255,255,255,0.03); font-size: 12px; transition: background 0.2s; cursor: pointer;";
+                clientesDoEquipamento.forEach(conexao => {
+                    // Filtro da barra de pesquisa
+                    if (this.searchQuery) {
+                        const termo = this.searchQuery;
+                        // Procura no contrato ou nome (se disponível)
+                        let match = false;
+                        if (conexao.id && conexao.id.includes(termo)) match = true;
+                        if (conexao.porta && conexao.porta.includes(termo)) match = true;
+                        if (infoClientes[conexao.id]?.data.registro.nome.toLowerCase().includes(termo)) match = true;
+                        if (!match) return; // Pula se não bater com a busca
+                    }
 
-                    // Eventos da Linha
-                    row.onmouseover = () => row.style.backgroundColor = "var(--gg-hover)";
-                    row.onmouseout = () => row.style.backgroundColor = "transparent";
-                    row.onclick = () => row.classList.toggle('strikethrough'); // Taxar
+                    const li = document.createElement("div");
+                    li.className = 'gg-client-row';
+                    // Adiciona ID para facilitar atualização de sinal
+                    li.dataset.clientId = conexao.id || "";
 
-                    let statusColor = '#b2bec3'; // Cinza (Livre)
-                    let mainText = item.status || 'Livre';
-                    let subText = '';
-
-                    if (item.id && infoClientes[item.id]) {
-                        const dados = infoClientes[item.id].data;
-                        const reg = dados.registro || {};
-                        const nomeFull = reg.nome || "Desconhecido";
-                        const redeClienteRaw = dados.rede?.rede || "";
-
-                        // Parse: "123 - Contrato - Nome (Status)"
-                        const parts = nomeFull.split(' - ');
-                        let contrato = "ID: " + item.id;
-                        let nomeReal = nomeFull;
-
-                        if (parts.length >= 3) {
-                            contrato = parts[1];
-                            nomeReal = parts.slice(2).join(' - ').replace(/\(ATIVO\)|\(SUSPENSO\)|\(CANCELADO\)/g, '').trim();
+                    li.onclick = () => {
+                        li.classList.toggle('clicked');
+                        // Lógica de "tachado"
+                        if (li.classList.contains('clicked')) {
+                            li.style.textDecoration = "line-through";
+                            li.style.opacity = "0.6";
+                        } else {
+                            li.style.textDecoration = "none";
+                            li.style.opacity = "1";
                         }
+                    };
 
-                        // Tratamento do Nome da Rede do Cliente
-                        const redeLimpa = redeClienteRaw.replace(/Card \d+ Porta \d+$/i, "").trim();
-                        const displayRede = redeLimpa ? ` - ${redeLimpa}` : "";
+                    const clienteDetalhes = infoClientes[conexao.id];
+                    let texto = "Cliente desconhecido";
+                    let contrato = "";
+                    let status = "NAO-IDENTIFICADO";
+                    let nomeDisplay = "";
+                    let redeDisplay = "";
+                    let statusColorClass = "status-NAO-IDENTIFICADO";
 
-                        // Define Texto Principal
-                        mainText = `${contrato}${displayRede}`;
+                    if (clienteDetalhes) {
+                        texto = clienteDetalhes.data.registro?.nome || "Cliente desconhecido";
+                        let partes = texto.split(" - ");
+                        contrato = partes[1]?.trim() || "";
+                        let matchStatus = texto.match(/\((ATIVO|CANCELADO|SUSPENSO|NAO IDENTIFICADO)\)/i);
+                        status = matchStatus ? matchStatus[1].toUpperCase().replace(' ', '-') : "NAO-IDENTIFICADO";
 
-                        // Define Subtexto (Nome ou Vazio dependendo da config)
-                        if (showName) {
-                            subText = nomeReal;
-                        }
+                        // Cores
+                        if(status === 'ATIVO') statusColorClass = 'status-ATIVO';
+                        else if(status === 'CANCELADO') statusColorClass = 'status-CANCELADO';
+                        else if(status === 'SUSPENSO') statusColorClass = 'status-SUSPENSO';
 
-                        // Cores por Status
-                        if (nomeFull.includes('ATIVO')) statusColor = '#55efc4'; // Verde
-                        else if (nomeFull.includes('SUSPENSO')) statusColor = '#ffeaa7'; // Amarelo
-                        else if (nomeFull.includes('CANCELADO')) statusColor = '#ff7675'; // Vermelho
-                        else statusColor = '#55efc4';
-
-                        // Verificação de Divergência
-                        if (highlightDivergent && !isDemanda) {
-                            const clientRedeNorm = this.normalizeNetworkName(redeLimpa);
-                            if (clientRedeNorm.length > 0) {
-                                let matchFound = false;
-                                // Verifica se a rede do cliente existe na "Whitelist" da caixa
-                                for (let boxNet of validNetworksInBox) {
-                                    if (clientRedeNorm.includes(boxNet) || boxNet.includes(clientRedeNorm)) {
-                                        matchFound = true; break;
-                                    }
-                                }
-                                if (!matchFound) row.classList.add('network-divergent');
+                        // Nome
+                        if (window.__hudState__.exibirNomeCliente) {
+                            let nomeCliente = "";
+                            if (partes.length > 2) {
+                                let ultimasPartes = partes.slice(2).join(" - ");
+                                nomeCliente = ultimasPartes.replace(/\s*\((ATIVO|CANCELADO|SUSPENSO|NAO IDENTIFICADO)\)$/i, "").trim();
                             }
+                            if(nomeCliente) nomeDisplay = `<span style="opacity:0.8; font-weight:normal"> - ${nomeCliente}</span>`;
                         }
 
-                    } else if (item.id) {
-                        statusColor = '#74b9ff'; // Azul (Carregando)
-                        mainText = "Carregando...";
-                        subText = `ID: ${item.id}`;
+                        // Rede (se divergente)
+                        let redeCliente = (clienteDetalhes.data.rede?.rede || "").replace(/Card \d+ Porta \d+$/i, "").trim();
+                        const redeClienteNorm = this.normalizeNetworkName(redeCliente);
+                        let mesmaRede = isDemanda ? true : todasRedesNorm.some(r => redeClienteNorm.includes(r));
+
+                        if (!mesmaRede && window.__hudState__.destacarRedesDivergentes) {
+                            li.classList.add('network-divergent');
+                        }
+                        if(redeCliente) redeDisplay = ` || <span style="opacity:0.7">${redeCliente}</span>`;
+
+                    } else if (conexao.id) {
+                        // Cliente ainda carregando ou sem dados
+                        contrato = conexao.id;
+                        texto = "Carregando...";
                     } else {
-                        // Sem cliente (Portas Vazias ou Especiais)
-                        if (item.status === 'Ocupada') statusColor = '#ffeaa7';
-                        if (item.status === 'Reservada') statusColor = '#74b9ff';
-                        if (item.status === 'Bloqueada') statusColor = '#ff7675';
+                        // Porta Vazia
+                        texto = "Livre";
                     }
 
-                    // --- LÓGICA DE CACHE DE SINAL ---
-                    // Se já existe sinal verificado para este cliente, exibe NO LUGAR do nome
-                    let subTextColor = 'var(--gg-text)';
-                    let subTextOpacity = '0.7';
-                    let subTextWeight = 'normal';
+                    const portaDisplay = conexao.obs
+                        ? `<img src="https://img.icons8.com/fluency/48/error--v1.png" style="width:14px;height:14px;vertical-align:middle;" title="${conexao.obs}">`
+                        : (conexao.porta || '?');
 
-                    if (item.id && this.currentBox.signalCache && this.currentBox.signalCache[item.id]) {
-                        const cache = this.currentBox.signalCache[item.id];
-                        subText = cache.text; // Ex: "-20.50 dBm"
-                        subTextColor = cache.color; // Cor baseada na qualidade
-                        subTextOpacity = '1';
-                        subTextWeight = 'bold';
+                    // --- CACHE DE SINAL (Injetado aqui se existir) ---
+                    let sinalDisplay = '';
+                    if (conexao.id && this.currentBox.signalCache && this.currentBox.signalCache[conexao.id]) {
+                        const cache = this.currentBox.signalCache[conexao.id];
+                        sinalDisplay = `<div class="gg-client-subtext" style="font-size: 0.85em; color: ${cache.color}; margin-top: -2px; padding-left: 20px;">Sinal: ${cache.text}</div>`;
                     }
-                    // --------------------------------
 
-                    const dot = `<span style="width: 8px; height: 8px; background: ${statusColor}; border-radius: 50%; display: inline-block; margin-right: 10px; flex-shrink: 0;"></span>`;
-                    const portNum = `<strong style="color: var(--gg-accent); margin-right: 10px; min-width: 20px;">${item.porta}</strong>`;
-
-                    // Montagem HTML da Linha
-                    let contentHTML = '';
-                    if (subText) {
-                        contentHTML = `
-                            <div style="display:flex; flex-direction:column; line-height: 1.3;">
-                                <span style="color: var(--gg-text); font-weight:600;">${mainText}</span>
-                                <span class="gg-client-subtext" style="color: ${subTextColor}; opacity: ${subTextOpacity}; font-weight: ${subTextWeight}; font-size: 11px;">${subText}</span>
-                            </div>`;
+                    if (contrato) {
+                        li.innerHTML = `
+                            <span class="port">${portaDisplay}:</span>
+                            <span class="contract">${contrato}</span>${nomeDisplay}
+                            <span class="${statusColorClass}">(${status.charAt(0) + status.slice(1).toLowerCase().replace('-', ' ')})</span>
+                            ${redeDisplay}
+                        `;
+                        contentDiv.appendChild(li);
+                        // Adiciona a linha de sinal (se houver)
+                        if(sinalDisplay) {
+                            const sd = document.createElement('div');
+                            sd.innerHTML = sinalDisplay;
+                            contentDiv.appendChild(sd);
+                        }
                     } else {
-                        // Se não tem subtexto (Nome oculto e sem sinal), ajusta cor do principal
-                        const color = item.id ? 'var(--gg-text)' : '#636e72';
-                        const style = item.id ? 'font-weight:600;' : 'font-style: italic;';
-                        contentHTML = `<span style="color: ${color}; ${style}">${mainText}</span>`;
+                        li.innerHTML = `<span class="port">${portaDisplay}:</span> <span style="font-style:italic; color:#636e72">Livre</span>`;
+                        contentDiv.appendChild(li);
                     }
-
-                    row.innerHTML = dot + portNum + contentHTML;
-                    groupContent.appendChild(row);
                 });
-
-                contentDiv.appendChild(group);
             });
 
             if (!hasContent) {
@@ -2074,7 +1955,7 @@
                 this.adjustPanelHeight(); // Ajusta altura com a nova barra
             };
 
-            // --- BOTÃO COPIAR (CORRIGIDO PARA HTTP) ---
+            // --- BOTÃO COPIAR ---
             const btnCopy = document.createElement('button');
             btnCopy.className = 'gg-header-btn';
             btnCopy.title = "Copiar lista";
@@ -2082,64 +1963,7 @@
 
             btnCopy.onclick = (e) => {
                 e.stopPropagation();
-
-                // Reconstrói a lista de texto baseada nos dados visíveis
-                const linhasParaCopiar = [];
-                const config = window.__hudState__; // Pega configurações atuais
-
-                // Itera sobre a ordem visual dos equipamentos
-                equipamentosOrdem.forEach(equipId => {
-                    const equip = equipamentosInfo[equipId];
-                    if (!equip || !equip.clientes) return;
-
-                    equip.clientes.forEach(item => {
-                        // Se for para copiar apenas cancelados e o status não for cancelado, pula
-                        // Nota: A lógica de filtro do status depende de como você guarda o status.
-                        // Aqui simplifiquei para copiar o que está renderizado se tiver dados.
-
-                        if (item.id && infoClientes[item.id]) {
-                            const dados = infoClientes[item.id].data;
-                            const reg = dados.registro || {};
-                            const nomeFull = reg.nome || "Desconhecido";
-
-                            // Lógica de Filtro (Opcional, baseada nas configs)
-                            if (config.somenteCancelados && !nomeFull.includes('CANCELADO') && !nomeFull.includes('Desativado')) {
-                                return;
-                            }
-
-                            // Formatação da linha
-                            let textoLinha = "";
-                            const parts = nomeFull.split(' - ');
-                            const contrato = parts.length >= 2 ? parts[1].trim() : item.id;
-
-                            textoLinha += contrato;
-
-                            if (config.exibirNomeCliente) {
-                                let nomeReal = parts.slice(2).join(' - ').replace(/\(ATIVO\)|\(SUSPENSO\)|\(CANCELADO\)/g, '').trim();
-                                if(nomeReal) textoLinha += ` - ${nomeReal}`;
-                            }
-
-                            if (config.copiarStatus) {
-                                const matchStatus = nomeFull.match(/\((ATIVO|CANCELADO|SUSPENSO)\)/i);
-                                const status = matchStatus ? matchStatus[1] : "Indefinido";
-                                textoLinha += ` (${status})`;
-                            }
-
-                            if (config.copiarNomeRede) {
-                                const rede = (dados.rede?.rede || "").replace(/Card \d+ Porta \d+$/i, "").trim();
-                                if(rede) textoLinha += ` || ${rede}`;
-                            }
-
-                            linhasParaCopiar.push(textoLinha);
-                        }
-                    });
-                });
-
-                if (linhasParaCopiar.length > 0) {
-                    this.copyTextSimple(linhasParaCopiar.join("\n"), "Lista copiada!");
-                } else {
-                    this.showToastGeneric("Nenhum cliente para copiar (verifique filtros).", "#ffeaa7");
-                }
+                this.copyToClipboard(panel);
             };
 
             const btnClose = document.createElement('button');
@@ -2196,7 +2020,7 @@
         createNotesPanel: function() {
             if (document.getElementById('geogrid-tools-notes-panel')) return;
             const panel = document.createElement('div'); panel.id = 'geogrid-tools-notes-panel'; panel.className = 'gg-panel';
-            const header = document.createElement('div'); header.className = 'gg-panel-header'; header.innerHTML = `<span>Anotações</span><span class="gg-panel-close">&times;</span>`;
+            const header = document.createElement('div'); header.className = 'gg-panel-header'; header.innerHTML = `<span>Anotações</span><span class="gg-panel-close">×</span>`;
 
             const content = document.createElement('div'); content.style.cssText = "flex-grow: 1; display: flex; flex-direction: column;";
             const textarea = document.createElement('textarea'); textarea.className = 'gg-notes-area'; textarea.placeholder = "Digite aqui...";
@@ -2212,7 +2036,7 @@
         createSettingsPanel: function() {
             if (document.getElementById('geogrid-tools-settings-panel')) return;
             const panel = document.createElement('div'); panel.id = 'geogrid-tools-settings-panel'; panel.className = 'gg-panel';
-            const header = document.createElement('div'); header.className = 'gg-panel-header'; header.innerHTML = `<span>Configurações</span><span class="gg-panel-close">&times;</span>`;
+            const header = document.createElement('div'); header.className = 'gg-panel-header'; header.innerHTML = `<span>Configurações</span><span class="gg-panel-close">×</span>`;
 
             const content = document.createElement('div'); content.className = 'gg-panel-content';
 
@@ -2414,32 +2238,74 @@
         },
 
         copyTextSimple: function(text, msg) {
-            // Cria um elemento textarea invisível
             const textArea = document.createElement("textarea");
             textArea.value = text;
-
-            // Garante que o elemento não seja visível mas faça parte do DOM
             textArea.style.position = "fixed";
             textArea.style.left = "-9999px";
-            textArea.style.top = "0";
             document.body.appendChild(textArea);
-
             textArea.focus();
             textArea.select();
 
             try {
-                // Comando antigo que funciona em HTTP
-                const successful = document.execCommand('copy');
-                if (successful) {
-                    this.showToastGeneric(msg || "Copiado!", "#00b894");
-                } else {
-                    this.showToastGeneric("Falha ao copiar.", "#ff7675");
-                }
+                document.execCommand('copy');
+                this.showToastGeneric(msg);
             } catch (err) {
-                console.error('Erro ao copiar:', err);
-                this.showToastGeneric("Erro ao copiar.", "#ff7675");
-            } finally {
-                document.body.removeChild(textArea);
+                console.error(err);
+            }
+            document.body.removeChild(textArea);
+        },
+
+        copyToClipboard: function(panel) {
+            const contentDiv = panel.querySelector('.gg-panel-content');
+            if (!contentDiv) return;
+
+            const rows = contentDiv.querySelectorAll('.gg-client-row');
+            const lines = [];
+
+            // --- LÓGICA DE CÓPIA DO V4.6 ---
+            rows.forEach(row => {
+                const contractEl = row.querySelector('.contract');
+                const nameEl = row.querySelector('.hud-client-name'); // Pode não existir se estiver escondido
+                const statusEl = row.querySelector('[class*="status-"]');
+                const redeEl = row.querySelector('.network'); // Pode não existir
+
+                let contractText = contractEl ? contractEl.textContent.trim() : "Desconhecido";
+
+                // Se o contrato for "Cliente Desconhecido", e estivermos copiando, mantemos
+                // Mas a lógica do v4.6 era:
+
+                // Verifica filtro de "Apenas Cancelados"
+                if (window.__hudState__.somenteCancelados) {
+                    if (statusEl && !statusEl.textContent.toUpperCase().includes('CANCELADO')) {
+                        return; // Pula se não for cancelado e a opção estiver ativa
+                    }
+                }
+
+                let line = contractText;
+
+                // Adiciona Nome
+                if (window.__hudState__.exibirNomeCliente && nameEl) {
+                    const cleanName = nameEl.textContent.replace(' - ', '').trim();
+                    line += ` - ${cleanName}`;
+                }
+
+                // Adiciona Status
+                if (window.__hudState__.copiarStatus && statusEl) {
+                    line += ` ${statusEl.textContent}`;
+                }
+
+                // Adiciona Rede
+                if (window.__hudState__.copiarNomeRede && redeEl) {
+                    line += ` || ${redeEl.textContent}`;
+                }
+
+                lines.push(line);
+            });
+
+            if (lines.length > 0) {
+                this.copyTextSimple(lines.join('\n'), 'Lista copiada!');
+            } else {
+                this.showToastGeneric('Nada para copiar (verifique os filtros).', '#ffeaa7');
             }
         },
 
@@ -2496,51 +2362,60 @@
             sb.style.display = (sb.style.display === 'flex') ? 'none' : 'flex';
         },
 
-        // --- SIGNAL CHECKER LOGIC (Updated for Divergence Feedback) ---
-        verifySignal: async function(targetEquipId, isBatchMode, btnElement) {
+        // --- SIGNAL CHECKER LOGIC (Updated for Divergence Feedback and NEW UI) ---
+        // Agora aceita uma LISTA de IDs manualmente para o "Modo Turbo"
+        verifySignal: async function(idsManuais, isBatchMode, btnElement, listaIdsPredefinida) {
             // 1. Verifica Cancelamento
             if (sinalSearchController) {
                 sinalSearchController.abort();
                 sinalSearchController = null;
                 this.showToastGeneric("Parando...", "#ff7675");
+
+                // Reseta ícone do botão
+                if(btnElement) {
+                    if(btnElement.dataset.originalHtml) btnElement.innerHTML = btnElement.dataset.originalHtml;
+                    btnElement.classList.remove('active');
+                    btnElement.style.color = "";
+                }
+
                 return;
             }
 
-            // 2. Coleta clientes
-            const clientsToCheck = [];
-            const equipIdsToCheck = isBatchMode ? equipamentosOrdem : [targetEquipId];
+            // 2. Coleta clientes (Lógica Híbrida: Lista Manual ou Varredura Automática)
+            let clientsToCheck = [];
 
-            equipIdsToCheck.forEach(eqId => {
-                const equip = equipamentosInfo[eqId];
-                if (!equip || !equip.clientes) return;
-
-                equip.clientes.forEach(item => {
-                    if (!item.id || !infoClientes[item.id]) return;
-
-                    const dados = infoClientes[item.id].data;
-                    const nomeFull = dados.registro?.nome || "";
-
-                    // Regra: Apenas ATIVOS
-                    if (!nomeFull.includes("ATIVO")) return;
-
-                    const redeClienteRaw = dados.rede?.rede || "";
-                    const redeClienteLimpa = this.normalizeNetworkName(redeClienteRaw.replace(/Card \d+ Porta \d+$/i, ""));
-                    const redeEquipLimpa = this.normalizeNetworkName(equip.nomeRede);
-
-                    // Verificação de Divergência
-                    if (eqId !== '__porDemanda__' && redeClienteLimpa && !redeClienteLimpa.includes(redeEquipLimpa)) {
-                        // ATUALIZAÇÃO: Mostra mensagem de erro visual ao invés de ignorar
-                        this.updateClientSignalUI(item.id, "Rede Divergente", "#ff7675", "bold");
-                        return; // Não adiciona na fila de fetch
+            if (listaIdsPredefinida && listaIdsPredefinida.length > 0) {
+                // MODO: Lista Específica (usado pelos botões de Cabeçalho da Rede)
+                listaIdsPredefinida.forEach(id => {
+                    if (infoClientes[id]) {
+                        clientsToCheck.push({
+                            id: id,
+                            contrato: id,
+                            nomeOriginal: infoClientes[id].data.registro?.nome || ""
+                        });
                     }
+                });
+            } else {
+                // MODO: Varredura Geral (Fallback)
+                const equipIdsToCheck = isBatchMode ? equipamentosOrdem : (idsManuais ? [idsManuais] : []);
+                equipIdsToCheck.forEach(eqId => {
+                    const equip = equipamentosInfo[eqId];
+                    if (!equip || !equip.clientes) return;
 
-                    clientsToCheck.push({
-                        id: item.id,
-                        contrato: item.id,
-                        nomeOriginal: nomeFull
+                    equip.clientes.forEach(item => {
+                        if (!item.id || !infoClientes[item.id]) return;
+                        const dados = infoClientes[item.id].data;
+                        const nomeFull = dados.registro?.nome || "";
+                        if (!nomeFull.includes("ATIVO")) return;
+
+                        clientsToCheck.push({
+                            id: item.id,
+                            contrato: item.id,
+                            nomeOriginal: nomeFull
+                        });
                     });
                 });
-            });
+            }
 
             if (clientsToCheck.length === 0) {
                 this.showToastGeneric("Nenhum cliente apto.", "#b2bec3");
@@ -2553,8 +2428,8 @@
 
             if(btnElement) {
                 if(!btnElement.dataset.originalHtml) btnElement.dataset.originalHtml = btnElement.innerHTML;
-                // Ícone de Stop
-                btnElement.innerHTML = '<svg viewBox="0 0 24 24"><path d="M6 6h12v12H6z"/></svg>';
+                // Ícone de Stop (Quadrado)
+                btnElement.innerHTML = '<svg viewBox="0 0 24 24" width="12" height="12"><path d="M6 6h12v12H6z" fill="currentColor"/></svg> Parar';
                 btnElement.classList.add('active');
                 btnElement.style.color = "#ff7675";
             }
@@ -2573,7 +2448,7 @@
                     const result = await this.fetchSignal(client, signal);
                     if (signal.aborted) return;
 
-                    let color = "#b2bec3";
+                    let color = "var(--gg-text)";
                     let text = result.sinal;
                     let weight = "normal";
 
@@ -2581,20 +2456,20 @@
                          const val = parseFloat(text);
                          if (!isNaN(val)) {
                              weight = "bold";
-                             if (val < -24.30) color = "#ffeaa7";
-                             else color = "#55efc4";
+                             if (val < -24.30) color = "var(--gg-orange)"; // #ffeaa7
+                             else color = "var(--gg-green)"; // #55efc4
                          }
                     } else {
-                        color = "#ff7675";
+                        color = "var(--gg-red)"; // #ff7675
                     }
 
                     if(!this.currentBox.signalCache) this.currentBox.signalCache = {};
                     this.currentBox.signalCache[client.id] = { text, color };
 
-                    this.updateClientSignalUI(client.id, text, color, weight);
+                    this.updateClientSignalUI(client.id, `Sinal: ${text}`, color, weight);
 
                 } catch (err) {
-                    if (!signal.aborted) this.updateClientSignalUI(client.id, "Erro", "#ff7675");
+                    if (!signal.aborted) this.updateClientSignalUI(client.id, "Erro", "var(--gg-red)");
                 } finally {
                     completed++;
                 }
@@ -2620,7 +2495,7 @@
             // 6. Finalização
             sinalSearchController = null;
             if(btnElement) {
-                if(btnElement.dataset.originalHtml) btnElement.innerHTML = btnElement.dataset.originalHtml;
+                btnElement.innerHTML = btnElement.dataset.originalHtml;
                 btnElement.classList.remove('active');
                 btnElement.style.color = "";
             }
@@ -2703,19 +2578,23 @@
             return { sinal: jsonSignal.sinal || "Sem Leitura" };
         },
 
-        updateClientSignalUI: function(clientId, text, color) {
-            // Atualiza o DOM diretamente para performance
-            // Procura o elemento de subtexto do cliente
-            // Como não temos IDs nos elementos DOM, buscamos pelo contexto
-            // Hack: Vamos adicionar um data-id na renderização para facilitar
+        updateClientSignalUI: function(clientId, text, color, weight) {
+            // Atualiza o DOM diretamente
             const row = document.querySelector(`.gg-client-row[data-client-id="${clientId}"]`);
             if (row) {
-                const subTextEl = row.querySelector('.gg-client-subtext');
-                if (subTextEl) {
-                    subTextEl.textContent = text;
-                    subTextEl.style.color = color;
-                    subTextEl.style.fontWeight = "bold";
+                // Procura se já existe a div de sinal
+                let signalDiv = row.nextElementSibling;
+                if (!signalDiv || !signalDiv.classList.contains('gg-signal-row')) {
+                    // Cria se não existir
+                    signalDiv = document.createElement('div');
+                    signalDiv.className = 'gg-signal-row';
+                    // Inserir APÓS a linha do cliente
+                    row.parentNode.insertBefore(signalDiv, row.nextSibling);
                 }
+
+                signalDiv.textContent = text;
+                signalDiv.style.color = color;
+                if(weight) signalDiv.style.fontWeight = weight;
             }
         },
 
