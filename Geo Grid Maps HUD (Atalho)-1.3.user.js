@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         New - GeoGrid Tools
 // @namespace    http://tampermonkey.net/
-// @version      5.9
+// @version      6.0
 // @description  Ferramentas avançadas para GeoGrid Maps + OCR (Layout de Clientes Clássico)
 // @author       Jhon
 // @match        http://172.16.6.57/geogrid/aconcagua/*
@@ -737,6 +737,125 @@
         }, true); // Use capture para garantir prioridade sobre o listener nativo
     }
 
+    // --- FUNÇÕES DE COLAR COORDENADAS E LINKS ---
+
+    function resolveShortlinkWithGM(url) {
+        return new Promise((resolve, reject) => {
+            try {
+                let target = url;
+                if (!/^https?:\/\//i.test(target)) target = 'https://' + target;
+
+                GM_xmlhttpRequest({
+                    method: "GET",
+                    url: target,
+                    headers: { "User-Agent": "Mozilla/5.0 (Tampermonkey)" },
+                    onload(response) {
+                        try {
+                            const final = response.finalUrl || response.responseURL || null;
+                            const html = response.responseText || '';
+                            if (final) return resolve({ url: final, html });
+
+                            const meta = html.match(/<meta\s+http-equiv=["']refresh["']\s+content=["'][^;]+;\s*url=([^"']+)["']/i);
+                            if (meta) return resolve({ url: meta[1], html });
+
+                            resolve({ url: target, html });
+                        } catch (e) { reject(e); }
+                    },
+                    onerror(err) { reject(err); },
+                    ontimeout(err) { reject(err); },
+                });
+            } catch (e) { reject(e); }
+        });
+    }
+
+    function extractCoords(text) {
+        if (!text) return null;
+        let m;
+        // Padrões do Google Maps e Lat/Lon
+        if (m = text.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/)) return { lat: m[1], lon: m[2] };
+        if (m = text.match(/@(-?\d+\.\d+),\s*(-?\d+\.\d+)/)) return { lat: m[1], lon: m[2] };
+        if (m = text.match(/[?&]q=(-?\d+\.\d+),\s*(-?\d+\.\d+)/)) return { lat: m[1], lon: m[2] };
+        if (m = text.match(/[?&]ll=(-?\d+\.\d+),\s*(-?\d+\.\d+)/)) return { lat: m[1], lon: m[2] };
+        const nums = text.match(/-?\d+\.\d+/g);
+        if (nums && nums.length >= 2) return { lat: nums[0], lon: nums[1] };
+        return null;
+    }
+
+    function iniciarListenerDeColarCoordenadas() {
+        document.body.addEventListener('paste', async function(e) {
+            // Só age se colar no input de latitude
+            if (!e.target || !e.target.matches || !e.target.matches('input[name="latitude"]')) return;
+
+            const latInput = e.target;
+            // Tenta achar o container pai para pegar o campo de longitude e o botão OK
+            // No Geogrid novo, geralmente estão próximos
+            const commonParent = latInput.closest('div') || latInput.parentElement;
+            if (!commonParent) return;
+
+            // Busca input longitude e botão OK no mesmo container
+            const lonInput = commonParent.parentElement.querySelector('input[name="longitude"]');
+            const okButton = commonParent.parentElement.querySelector('button[name="ok"]') ||
+                             Array.from(document.querySelectorAll('button')).find(b => b.textContent.includes('Ok') && commonParent.parentElement.contains(b));
+
+            if (!lonInput) return;
+
+            const pastedText = (e.clipboardData || window.clipboardData).getData('text') || '';
+            const raw = pastedText.trim();
+            if (!raw) return;
+
+            const preencher = (lat, lon) => {
+                if (!lat || !lon) return;
+                e.preventDefault(); // Impede a colagem do texto original
+                latInput.value = lat;
+                lonInput.value = lon;
+                // Dispara eventos para o site reconhecer a mudança
+                latInput.dispatchEvent(new Event('change'));
+                lonInput.dispatchEvent(new Event('change'));
+
+                if (okButton) okButton.focus(); // Foca no OK para facilitar
+
+                if(typeof UIManager !== 'undefined') UIManager.showToastGeneric("Coordenadas coladas!", "#00b894");
+            };
+
+            // 1. Verifica link do Google Maps
+            const shortlinkPattern = /\b(?:https?:\/\/)?(?:maps\.app\.goo\.gl|goo\.gl\/maps|goo\.gl)\//i;
+            const longlinkPattern  = /\bhttps?:\/\/(?:www\.)?google\.[^\/]+\/maps/i;
+
+            if (shortlinkPattern.test(raw) || longlinkPattern.test(raw)) {
+                e.preventDefault();
+                latInput.value = "Lendo link...";
+
+                try {
+                    let resolved = { url: raw, html: '' };
+                    if (shortlinkPattern.test(raw)) {
+                        resolved = await resolveShortlinkWithGM(raw);
+                    }
+
+                    let coords = extractCoords(resolved.url || raw);
+                    if (!coords && resolved.html) coords = extractCoords(resolved.html);
+
+                    if (coords) {
+                        preencher(coords.lat, coords.lon);
+                    } else {
+                        latInput.value = "Link não reconhecido";
+                    }
+                } catch (err) {
+                    console.error("Erro link:", err);
+                    latInput.value = "Erro";
+                }
+                return;
+            }
+
+            // 2. Verifica coordenadas brutas (ex: -23.55, -46.66)
+            // Aceita espaço, vírgula ou ponto e vírgula como separador
+            const coordMatch = raw.match(/^(-?\d+\.\d+)[\s,;]+(-?\d+\.\d+)$/);
+            if (coordMatch) {
+                preencher(coordMatch[1], coordMatch[2]);
+            }
+
+        }, true); // Use capture
+    }
+
     /**
      * =======================================================================================
      * MODULE: UI MANAGER
@@ -772,6 +891,7 @@
             this.bindGlobalEvents();
             this.applyTheme();
             iniciarListenerDePesquisaRapida();
+            iniciarListenerDeColarCoordenadas();
             console.log("[GeoGrid Tools] UI Initialized.");
         },
 
