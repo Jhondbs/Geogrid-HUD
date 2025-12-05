@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         New - GeoGrid Tools
 // @namespace    http://tampermonkey.net/
-// @version      6.0
+// @version      6.5
 // @description  Ferramentas avançadas para GeoGrid Maps + OCR (Layout de Clientes Clássico)
 // @author       Jhon
 // @match        http://172.16.6.57/geogrid/aconcagua/*
@@ -10,6 +10,8 @@
 // @grant        GM_xmlhttpRequest
 // @grant        GM_setClipboard
 // @require      https://unpkg.com/tesseract.js@v4.0.3/dist/tesseract.min.js
+// @downloadURL https://github.com/Jhondbs/Geogrid-HUD/raw/refs/heads/main/Geo%20Grid%20Maps%20HUD%20(Atalho)-1.3.user.js
+// @updateURL https://github.com/Jhondbs/Geogrid-HUD/raw/refs/heads/main/Geo%20Grid%20Maps%20HUD%20(Atalho)-1.3.user.js
 // ==/UserScript==
 
 (function() {
