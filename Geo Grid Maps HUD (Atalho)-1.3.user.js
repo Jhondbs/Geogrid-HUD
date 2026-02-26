@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GeoGrid Tools (Loader)
 // @namespace    http://tampermonkey.net/
-// @version      7.2
+// @version      8.0
 // @description  Carregador Modular do Sistema Geogrid
 // @author       Jhon
 // @match        http://172.16.6.57/geogrid/aconcagua/*
@@ -12,7 +12,7 @@
 // @updateURL https://github.com/Jhondbs/Geogrid-HUD/raw/refs/heads/main/Geo%20Grid%20Maps%20HUD%20(Atalho)-1.3.user.js
 // ==/UserScript==
 
-(function() {
+(function () {
     'use strict';
 
     console.log("[GeoGrid Loader] Inicializando...");
@@ -23,7 +23,7 @@
     //unsafeWindow.GM_setClipboard = GM_setClipboard;
 
     // CONFIGURAÇÃO DA REDE
-    const BASE_URL = "http://172.16.6.23/mapas/dados/Geogrid%20Clientes%20-%20Jhon/scripts/";
+    const BASE_URL = "http://172.15.3.132:8000/scripts/";
 
     const MODULES = [
         "style.css",
@@ -61,7 +61,7 @@
         GM_xmlhttpRequest({
             method: "GET",
             url: url,
-            onload: function(response) {
+            onload: function (response) {
                 if (response.status === 200) {
                     try {
                         const script = document.createElement("script");
