@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GeoGrid Tools (Loader)
 // @namespace    http://tampermonkey.net/
-// @version      8.1
+// @version      8.0
 // @description  Carregador Modular do Sistema Geogrid
 // @author       Jhon
 // @match        http://172.16.6.57/geogrid/aconcagua/*
