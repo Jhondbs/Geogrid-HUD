@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GeoGrid Tools (Loader)
 // @namespace    http://tampermonkey.net/
-// @version      8.0
+// @version      9.0
 // @description  Carregador Modular do Sistema Geogrid
 // @author       Jhon
 // @match        http://172.16.6.57/geogrid/aconcagua/*
@@ -23,7 +23,7 @@
     //unsafeWindow.GM_setClipboard = GM_setClipboard;
 
     // CONFIGURAÇÃO DA REDE
-    const BASE_URL = "http://172.15.3.132:8000/scripts/";
+    const BASE_URL = "http://172.16.6.23/mapas/dados/Geogrid%20Clientes%20-%20Jhon/scripts/";
 
     const MODULES = [
         "style.css",
